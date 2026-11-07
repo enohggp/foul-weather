@@ -1,6 +1,7 @@
 // The bar across the top, your quests, your ships, and the building shop.
 
 import { useEffect, useRef, useState } from "react";
+import * as sound from "../audio";
 import { fullName, shopName } from "../cast";
 import { BUILDS, levelOf, QUESTS, type Progress, type Quest } from "../progress";
 import type { House, Position, View } from "../types";
@@ -34,17 +35,15 @@ interface BarProps {
   paused: boolean;
   fast: boolean;
   canPace: boolean;
-  muted: boolean;
   onPause: () => void;
   onPlay: () => void;
   onFast: () => void;
-  onMute: () => void;
   onBuild: () => void;
   onLedger: () => void;
   onHome: () => void;
 }
 
-export function TopBar({ view, you, progress, paused, fast, canPace, muted, onPause, onPlay, onFast, onMute, onBuild, onLedger, onHome }: BarProps) {
+export function TopBar({ view, you, progress, paused, fast, canPace, onPause, onPlay, onFast, onBuild, onLedger, onHome }: BarProps) {
   const coins = useCounting(you?.capital ?? 0);
   const { level, into, need } = levelOf(progress.xp);
   const day = Math.floor(view.watch / view.watches_per_day) + 1;
@@ -100,18 +99,53 @@ export function TopBar({ view, you, progress, paused, fast, canPace, muted, onPa
             </button>
           </>
         )}
-        <button className="round" onClick={onMute} aria-label={muted ? "Turn sound on" : "Turn sound off"} title="Sound">
-          <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M4 9v6h4l5 4V5L8 9z" fill="#fff" stroke="#3b2a1e" strokeWidth="1.800" strokeLinejoin="round" />
-            {!muted && <path d="M16 8c2 2 2 6 0 8M18.500 5.500c3.500 3.500 3.500 9.500 0 13" fill="none" stroke="#3b2a1e" strokeWidth="1.800" strokeLinecap="round" />}
-            {muted && <path d="M16 9l5 6M21 9l-5 6" stroke="#3b2a1e" strokeWidth="2" strokeLinecap="round" />}
-          </svg>
-        </button>
+        <SoundButtons />
         <button className="grown-ups" onClick={onLedger}>
           For grown-ups
         </button>
       </div>
     </header>
+  );
+}
+
+/** Sound on or off, and music on or off. Both are remembered. */
+export function SoundButtons() {
+  const [muted, setMuted] = useState(sound.isMuted);
+  const [music, setMusic] = useState(sound.isMusicOn);
+  return (
+    <>
+      <button
+        className={`round${music && !muted ? "" : " off"}`}
+        onClick={() => {
+          sound.setMusicOn(!music);
+          setMusic(!music);
+        }}
+        aria-label={music ? "Turn music off" : "Turn music on"}
+        title="Music"
+      >
+        <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M9 18V6l10-2v12" fill="none" stroke="#3b2a1e" strokeWidth="2" strokeLinejoin="round" />
+          <circle cx="6.500" cy="18" r="2.800" fill="#fff" stroke="#3b2a1e" strokeWidth="1.800" />
+          <circle cx="16.500" cy="16" r="2.800" fill="#fff" stroke="#3b2a1e" strokeWidth="1.800" />
+          {!music && <path d="M4 4l16 16" stroke="#3b2a1e" strokeWidth="2" strokeLinecap="round" />}
+        </svg>
+      </button>
+      <button
+        className={`round${muted ? " off" : ""}`}
+        onClick={() => {
+          sound.setMuted(!muted);
+          setMuted(!muted);
+        }}
+        aria-label={muted ? "Turn sound on" : "Turn sound off"}
+        title="Sound"
+      >
+        <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M4 9v6h4l5 4V5L8 9z" fill="#fff" stroke="#3b2a1e" strokeWidth="1.800" strokeLinejoin="round" />
+          {!muted && <path d="M16 8c2 2 2 6 0 8M18.500 5.500c3.500 3.500 3.500 9.500 0 13" fill="none" stroke="#3b2a1e" strokeWidth="1.800" strokeLinecap="round" />}
+          {muted && <path d="M16 9l5 6M21 9l-5 6" stroke="#3b2a1e" strokeWidth="2" strokeLinecap="round" />}
+        </svg>
+      </button>
+    </>
   );
 }
 

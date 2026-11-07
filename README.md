@@ -11,7 +11,7 @@ Built at NEAR HACKATHON (1 to 14 November 2026). Track: **Games With Real Econom
 | | |
 | --- | --- |
 | Contract (NEAR testnet) | [`foulweather-harbor.testnet`](https://testnet.nearblocks.io/address/foulweather-harbor.testnet) |
-| Demo video, Pip plays the real game, captions, no sound | [`docs/demo/foul-weather-demo.mp4`](docs/demo/foul-weather-demo.mp4) |
+| Demo video, Pip plays the real game, with voice and sound | [`docs/demo/foul-weather-demo.mp4`](docs/demo/foul-weather-demo.mp4) |
 | Rulebook, every price and decision in one file | [`crates/core/src/rules.rs`](crates/core/src/rules.rs) |
 | The loop on paper | [`docs/GAME_LOOP.md`](docs/GAME_LOOP.md) |
 | How NEAR is used | [`docs/NEAR.md`](docs/NEAR.md) |
@@ -38,7 +38,7 @@ npm run dev
 
 Open <http://localhost:3000>. Use that exact address, because Google and email sign-in only works there.
 
-The quickest way to see everything is **Watch Pip play** on the title screen. Pip the parrot plays the real game for about three minutes, with captions, and finishes with a real move on NEAR testnet. The world holds still while Pip explains. It speaks if your browser has a speech voice. Press Esc to stop it.
+The quickest way to see everything is **Watch Pip play** on the title screen. Pip the parrot plays the real game for about three minutes, explaining each step aloud, and finishes with a real move on NEAR testnet. The world holds still while Pip explains. Press Esc to stop it.
 
 Or try it yourself. Each step below says what to do and what you should see.
 
@@ -51,7 +51,7 @@ Or try it yourself. Each step below says what to do and what you should see.
 7. **Do:** in the same panel, press **Watch a spiral collapse**, or open <http://localhost:3000/?demo=spiral>. **See:** a great storm, then shops toppling one after another. It ends with a list of who fell and in what order.
 8. **Do:** go back to the title, and press **Play with others**. **See:** the same game, shared and on NEAR testnet, with no wallet, popup or gas prompt. **For grown-ups** links your account and your last transaction on an explorer.
 
-Sound is on by default. The speaker button mutes it. No Rust is needed for any of this, because the compiled rules are in `web/public/engine.wasm`.
+Sound starts with your first tap, because browsers keep a page silent until then. After that it plays on every screen: waves, gulls, a little tune that turns darker in a big storm, and Pip's voice. The speaker button mutes everything, and the note button stops only the music. No Rust is needed for any of this, because the compiled rules are in `web/public/engine.wasm`.
 
 ## Two layers
 
@@ -59,6 +59,7 @@ The cartoon is a friendly face on the real game. Nothing about it is faked.
 
 - **What a child sees:** one captain at a time, what you get now, what you pay if it sinks, and a meter from green to red. Yes or no.
 - **What is really happening:** each yes is a real quote on the slip. The client works out the fee and takes a share of the ship small enough that one wreck costs about a quarter of your coins, so a beginner can't lose everything to bad luck, and deals grow as the shop grows. The meter is the expected loss divided by the pay.
+- **What Pip says out loud:** every lesson and tip, so a child who can't read yet can still play.
 - **What stays on the device:** levels, quests, stars and decorations. They teach the game one idea at a time and never touch the economy.
 - **What a grown-up can open:** **For grown-ups** shows the whole market: positions, reinsurance offers, the network of who relies on whom, goods prices, and the live contract.
 
@@ -139,7 +140,7 @@ crates/contract        The rules on NEAR: world, tokens, front door. No game ser
 crates/engine-wasm     The same rules in the browser, for practice and fast-forward.
 crates/nep245-ledger   A reusable NEP-245 ledger with no SDK dependency.
 web/                   React client, with all art drawn in code. All NEAR calls are in web/src/live.ts.
-scripts/               Deploy helpers, keeper, verification, agent house.
+scripts/               Deploy helpers, keeper, verification, agent house, Pip's recordings.
 ```
 
 `tick` is public, so players' browsers move the world on. A watch costs 4 to 6 Tgas, because the whole world fits in about 11 KB of state.

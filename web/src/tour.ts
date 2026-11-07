@@ -3,13 +3,13 @@
 // and the last part makes a real move on NEAR testnet. The world holds still while
 // Pip talks, so the words always match what you can see.
 
-import lines from "./tourLines.json";
+import * as sound from "./audio";
+import lines from "./pipLines.json";
 
 type LineId = keyof typeof lines;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 let stopped = false;
-let currentAudio: HTMLAudioElement | null = null;
 
 function caption(text: string) {
   let el = document.getElementById("tour-caption");
@@ -30,39 +30,12 @@ function caption(text: string) {
   el.hidden = !text;
 }
 
-function playClip(id: string): Promise<boolean> {
-  return new Promise((resolve) => {
-    const audio = new Audio(new URL(`tour/${id}.mp3`, new URL(import.meta.env.BASE_URL, window.location.href)).href);
-    currentAudio = audio;
-    audio.onended = () => resolve(true);
-    audio.onerror = () => resolve(false);
-    audio.play().catch(() => resolve(false));
-  });
-}
-
-function speakWithBrowser(text: string): Promise<boolean> {
-  return new Promise((resolve) => {
-    if (!("speechSynthesis" in window) || !speechSynthesis.getVoices().length) {
-      resolve(false);
-      return;
-    }
-    const utterance = new SpeechSynthesisUtterance(text);
-    const voices = speechSynthesis.getVoices();
-    utterance.voice = voices.find((v) => v.lang === "en-GB") ?? voices.find((v) => v.lang.startsWith("en")) ?? null;
-    utterance.rate = 1.02;
-    utterance.onend = () => resolve(true);
-    utterance.onerror = () => resolve(false);
-    speechSynthesis.speak(utterance);
-  });
-}
-
 /** Shows a line and speaks it, then waits for it to finish. */
 async function say(id: LineId) {
   if (stopped) throw new Error("tour stopped");
-  const text = lines[id];
+  const { text } = lines[id];
   caption(text);
-  const spoken = (await playClip(id)) || (await speakWithBrowser(text));
-  if (!spoken) await sleep(600 + text.split(" ").length * 340);
+  if (!(await sound.speak(id))) await sleep(600 + text.split(" ").length * 340);
   await sleep(260);
 }
 
@@ -199,11 +172,9 @@ async function liveRound() {
 export async function runTour() {
   stopped = false;
   document.body.classList.add("touring");
-  window.speechSynthesis?.getVoices();
   const stop = () => {
     stopped = true;
-    currentAudio?.pause();
-    window.speechSynthesis?.cancel();
+    sound.stopVoice();
   };
   window.addEventListener("keydown", (e) => e.key === "Escape" && stop(), { once: true });
   try {

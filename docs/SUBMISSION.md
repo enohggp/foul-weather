@@ -40,7 +40,7 @@ These you need to fill in yourself: team lead's name, contact email, team size, 
 
 ## Demo video
 
-A captioned recording of Pip playing the real game is at [`docs/demo/foul-weather-demo.mp4`](demo/foul-weather-demo.mp4). It has no sound, so the bells are missing. You can post it as it is, but your own voice and the bells would be better. A shorter script for that:
+A recording of Pip playing the real game, with her voice and the game's sound, is at [`docs/demo/foul-weather-demo.mp4`](demo/foul-weather-demo.mp4). You can post it as it is. If you would rather talk over a shorter cut yourself, here is a script:
 
 | Time | Show | Say |
 | --- | --- | --- |

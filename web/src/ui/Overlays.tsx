@@ -7,7 +7,7 @@ import type { House, View } from "../types";
 import { crowns, pct, titleFor } from "../words";
 import { Character, Coin, Pip, ShopIcon, Star } from "./art";
 import { LineChart } from "./bits";
-import { shopColour } from "./Hud";
+import { shopColour, SoundButtons } from "./Hud";
 import { TitleSea } from "./Theatre";
 
 export interface TitleChoice {
@@ -51,6 +51,9 @@ export function Title({
   return (
     <main className="title">
       <TitleSea />
+      <div className="title-sound">
+        <SoundButtons />
+      </div>
       <div className="title-card">
         <div className="title-pip">
           <Pip size={116} />

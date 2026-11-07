@@ -6,7 +6,8 @@ import { CAST, fullName, shopName } from "./cast";
 import { NORMAL_WATCH_MS, PracticeDriver, SPIRAL_MS, WEEK_IN_A_MINUTE_MS } from "./engine";
 import { BUILDS, levelOf, loadProgress, QUESTS, saveProgress, SKILL, UNLOCKS, unlocked, type Progress } from "./progress";
 import type { Action, Driver, GameEvent, Position, Receipt, Slip, View } from "./types";
-import { Coin, Star } from "./ui/art";
+import lines from "./pipLines.json";
+import { Coin, Star, type Mood } from "./ui/art";
 import Chart, { PORTS, type Fit } from "./ui/Chart";
 import { Helper, type Say } from "./ui/Helper";
 import { BuildShop, LevelUp, MyShips, Quests, Race, shopColour, TopBar } from "./ui/Hud";
@@ -46,13 +47,23 @@ interface Flyer {
 
 /** The last shop in the demo falls 20 watches in. See scripts/find-spiral.mjs. */
 const SPIRAL_WATCHES = 23;
+
+type LineId = keyof typeof lines;
+
+/** One of Pip's lines. The words on screen and the recording come from the same list. */
+function pip(id: LineId): Say {
+  const line = lines[id] as { text: string; mood: string };
+  return { id, text: line.text, mood: line.mood === "warm" ? "happy" : line.mood === "sad" ? "worried" : (line.mood as Mood) };
+}
+
 const COACH: Say[] = [
-  { id: "c0", text: "Ahoy! I'm Pip, your helper. This is your shop. You protect ships!", next: "Hello, Pip!" },
-  { id: "c1", text: "Captains are scared of storms, so they pay you coins to protect their ship.", next: "OK!" },
-  { id: "c2", text: "But if the ship sinks, YOU have to pay for it. Ouch!", mood: "worried", next: "I see" },
-  { id: "c3", text: "This meter shows if a deal is good. Green is great. Red means say no!", next: "Got it" },
-  { id: "c4", text: "This looks like a good one. Tap the green button to protect it!", mood: "cheer" },
+  { ...pip("c0"), next: "Hello, Pip!" },
+  { ...pip("c1"), next: "OK!" },
+  { ...pip("c2"), next: "I see" },
+  { ...pip("c3"), next: "Got it" },
+  pip("c4"),
 ];
+const LESSON_VOICE = ["c0", "c1", "c2", "c3", "c4", "ready", "ring", "collect", "goal", "wreck"];
 const SPOT = ["", "earn", "lose", "danger", "yes"];
 
 const roomCoins = (view: View) => view.houses.filter((h) => h.active).reduce((sum, h) => sum + h.capital, 0);
@@ -89,7 +100,6 @@ export default function Game({ driver, houseName, hood, onExit, onSpiral, spiral
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [says, setSays] = useState<Say[]>([]);
   const [flash, setFlash] = useState(0);
-  const [muted, setMuted] = useState(sound.isMuted);
   const [pace, setPace] = useState(() => (practice ? practice.pace() : NORMAL_WATCH_MS));
   const [problem, setProblem] = useState<string | null>(null);
   const [priceTrail, setPriceTrail] = useState<Record<string, number[]>>({});
@@ -186,17 +196,22 @@ export default function Game({ driver, houseName, hood, onExit, onSpiral, spiral
         const value = q.count === "coins" ? coins : (next.counts[q.count] ?? 0);
         if (value >= q.target) {
           next = { ...next, doneQuests: [...next.doneQuests, q.id], stars: next.stars + q.stars, xp: next.xp + 20 };
-          sound.coins();
+          sound.jingle("quest");
+          if (!sound.isSpeaking() && !document.body.classList.contains("touring")) void sound.speak("quest");
           toast({ kind: "good", title: "Quest done!", sub: `${q.text}. +${q.stars} stars` });
         }
       }
       const before = levelOf(p.xp).level;
       const after = levelOf(next.xp).level;
-      if (after > before) setLevelUp(after);
+      if (after > before) {
+        setLevelUp(after);
+        sound.jingle("level");
+        if (!document.body.classList.contains("touring")) void sound.speak("level");
+      }
       const cheapest = BUILDS.find((b) => !next.built.includes(b.id));
       if (cheapest && next.stars >= cheapest.stars && !told.current.has("build")) {
         told.current.add("build");
-        speak({ id: "build", text: "You have enough stars! Tap Build at the top to make your harbor pretty.", mood: "cheer" });
+        speak(pip("build"));
       }
       progressRef.current = next;
       saveProgress(next);
@@ -228,12 +243,12 @@ export default function Game({ driver, houseName, hood, onExit, onSpiral, spiral
     previous.current = view;
     if (spiral) {
       spiralStart.current = { watch: view.watch, coins: roomCoins(view) };
-      speak({ id: "spiral", text: "Watch the shops on the left! A huge storm is coming, and they all lean on each other.", mood: "worried" });
+      speak(pip("spiral"));
     } else if (!practice) {
-      speak({ id: "live", text: "You're playing with real people now! Pick a captain and tap the green button.", mood: "cheer" });
+      speak(pip("live"));
     } else if (started.current) {
       setSpeed(NORMAL_WATCH_MS);
-      speak({ id: "back", text: "Welcome back! Captains are waiting at your dock.", mood: "cheer" });
+      speak(pip("back"));
     }
   }, [view, spiral, practice, speak, setSpeed]);
 
@@ -285,12 +300,13 @@ export default function Game({ driver, houseName, hood, onExit, onSpiral, spiral
           toast({ kind: "good", title: `+${crowns(fee)} coins!`, sub: `${CAST[e.captain % CAST.length].name} has set sail` });
           const f = fitRef.current;
           fly("coin", f.x + PORTS[0][0] * f.scale, f.y + PORTS[0][1] * f.scale);
-          once({ id: "ring", text: "Hooray! Your ship has a gold ring on the map. Watch it sail!", mood: "cheer" });
+          once(pip("ring"));
         }
       }
       if (quiet.current && e.type !== "house_failed" && e.type !== "storm_hit") return;
       if (e.type === "home" && mine.has(e.voyage)) {
         sound.bell(2);
+        sound.jingle("home");
         const reward: Reward = { id: rewardId.current++, port: e.port, captain: e.captain, stars: 1 };
         rewardsRef.current = [...rewardsRef.current, reward];
         setRewards(rewardsRef.current);
@@ -299,20 +315,22 @@ export default function Game({ driver, houseName, hood, onExit, onSpiral, spiral
           homeScenes.current += 1;
           setQueue((q) => [...q, { id: momentId.current++, kind: "home", ship: "", captain: e.captain, amount: 0 }]);
         }
-        once({ id: "collect", text: "Your ship made it! Tap the star on the map to collect it.", mood: "cheer" });
+        once(pip("collect"));
       }
       if (e.type === "wrecked" && mine.has(e.voyage)) {
         const amount = mine.get(e.voyage) ?? 0;
         sound.bell(1);
         sound.thunder();
+        sound.jingle("sad");
         setQueue((q) => [...q, { id: momentId.current++, kind: "wreck", ship: view.captains[e.captain].ship, captain: e.captain, amount }]);
-        once({ id: "wreck", text: "Oh no! That's the risk of the job. Say no to the red ones and you'll be fine.", mood: "worried" });
+        once(pip("wreck"));
       }
       if (e.type === "claim_due" && me && e.suspicion >= 8 && unlocked(progressRef.current.xp, SKILL.detective)) {
         const claim = view.claims.find((c) => c.id === e.claim);
         if (claim && view.positions.some((p) => p.voyage === claim.voyage && p.writer === me.id)) {
           speak({
             id: `detect-${e.claim}`,
+            voice: "detect",
             text: `Hmm! That ship sank in strange weather. Did ${fullName(e.captain)} sink it on purpose? Investigate for ${view.fees.inquiry} coins?`,
             mood: "worried",
             actions: [
@@ -340,7 +358,7 @@ export default function Game({ driver, houseName, hood, onExit, onSpiral, spiral
         if (e.great) sound.thunder();
         const risky = me ? view.positions.filter((p) => p.writer === me.id && e.lanes & (1 << p.lane) && p.ceded === 0) : [];
         if (risky.length && me) warnStorm.current(risky, e.great);
-        else if (e.great) once({ id: "great", text: "A big storm is coming! Be careful which ships you protect.", mood: "worried" });
+        else if (e.great) once(pip("great"));
       }
       if (e.type === "storm_hit") {
         setSays((list) => list.filter((s) => !s.id.startsWith("storm-")));
@@ -360,13 +378,13 @@ export default function Game({ driver, houseName, hood, onExit, onSpiral, spiral
             toast({ kind: "bad", title: `${shopName(fallen.name)} closed!`, sub: "It ran out of coins" });
             if (spiral) {
               if (fallenRef.current.length === 1) {
-                speak({ id: "domino1", text: "One shop ran out of coins. But other shops were counting on it!", mood: "worried" });
+                speak(pip("domino1"));
               } else if (fallenRef.current.length === 2) {
                 setSays((list) => list.filter((s) => s.id !== "domino1"));
-                speak({ id: "domino2", text: "Now they can't pay either. It's spreading like falling dominoes!", mood: "worried" });
+                speak(pip("domino2"));
               }
             } else {
-              once({ id: "closed", text: "A rival shop ran out of coins and closed. See the sign on it in town?", mood: "worried" });
+              once(pip("closed"));
             }
           }
         }
@@ -374,6 +392,7 @@ export default function Game({ driver, houseName, hood, onExit, onSpiral, spiral
       if (e.type === "laid_up" && unlocked(progressRef.current.xp, SKILL.helper) && me) {
         speak({
           id: `help-${e.captain}`,
+          voice: "help",
           text: `${fullName(e.captain)} has run out of coins! Lend ${crowns(view.fees.refit)} coins? They'll pay you back more later.`,
           actions: [
             {
@@ -407,7 +426,7 @@ export default function Game({ driver, houseName, hood, onExit, onSpiral, spiral
         const won = view.voyages.some((v) => v.captain === captain && view.positions.some((p) => p.voyage === v.id && p.writer === me.id));
         if (!won) {
           toast({ kind: "plain", title: "Another shop got this one", sub: `${CAST[captain % CAST.length].name} went with a cheaper shop` });
-          once({ id: "outbid", text: "Another shop asked for less this time. Don't worry, there are more captains!" });
+          once(pip("outbid"));
         }
       }
       const placed = new Set(fresh.flatMap((e) => (e.type === "ceded" ? [e.position] : [])));
@@ -437,6 +456,7 @@ export default function Game({ driver, houseName, hood, onExit, onSpiral, spiral
       const id = `storm-${view.watch}`;
       speak({
         id,
+        voice: canShare ? "stormshare" : "storm",
         text: canShare
           ? `Storm coming! Your ship is in danger. Pay ${crowns(cost)} coins so a rival shop helps if it sinks?`
           : `${great ? "A big storm" : "A storm"} is coming towards your ship! Fingers crossed!`,
@@ -468,14 +488,31 @@ export default function Game({ driver, houseName, hood, onExit, onSpiral, spiral
       rewardsRef.current = rewardsRef.current.filter((r) => r.id !== id);
       setRewards(rewardsRef.current);
       const f = fitRef.current;
-      sound.coins();
+      sound.jingle("star");
       fly("star", f.x + PORTS[reward.port][0] * f.scale, f.y + PORTS[reward.port][1] * f.scale);
       grow("collected", 15, 1, you?.capital ?? 0);
-      once({ id: "goal", text: "Keep going! The shop with the most coins at the Harbor Festival wins.", mood: "cheer" });
+      once(pip("goal"));
     },
     [grow, fly, once, you?.capital],
   );
   collectLater.current = collect;
+
+  // The background follows the weather: wind and rain for a storm, a darker tune for a big one.
+  const you_id = you?.id;
+  const weather: sound.Weather = useMemo(() => {
+    if (!view) return 0;
+    const hitting = view.storms.filter((s) => s.starts <= view.watch && view.watch < s.ends);
+    const near = view.storms.filter((s) => s.starts - view.watch <= 2);
+    const onMine = near.some((s) => view.positions.some((p) => p.writer === you_id && s.lanes.includes(p.lane)));
+    if (hitting.some((s) => s.great) || onMine) return 2;
+    return hitting.length || near.length ? 1 : 0;
+  }, [view, you_id]);
+  useEffect(() => sound.setWeather(weather), [weather]);
+  useEffect(() => () => sound.setWeather(0), []);
+
+  // A shipwreck needs a moment of quiet.
+  const wrecking = moment?.kind === "wreck";
+  useEffect(() => sound.duck("wreck", wrecking), [wrecking]);
 
   // One scene at a time.
   useEffect(() => {
@@ -488,6 +525,13 @@ export default function Game({ driver, houseName, hood, onExit, onSpiral, spiral
 
   // Pip's ordinary remarks fade by themselves.
   const current = coach >= 0 && coach <= 4 ? COACH[coach] : (says[0] ?? null);
+  const spoken = current?.voice ?? current?.id ?? null;
+  useEffect(() => {
+    sound.prepareVoice(LESSON_VOICE);
+  }, []);
+  useEffect(() => {
+    if (spoken && !document.body.classList.contains("touring")) void sound.speak(spoken);
+  }, [spoken]);
   useEffect(() => {
     if (!says.length || says[0].actions || (coach >= 0 && coach <= 4)) return;
     const timer = window.setTimeout(() => setSays((list) => list.slice(1)), 6500);
@@ -497,10 +541,9 @@ export default function Game({ driver, houseName, hood, onExit, onSpiral, spiral
   const yes = useCallback(
     (slip: Slip, deal: Deal) => {
       sound.stamp();
-      sound.startSurf();
       void act({ kind: "quote", slip: slip.id, rate_bps: deal.rate, line_bps: deal.share });
       grow("protected", 10, 0, you?.capital ?? 0);
-      once({ id: "ready", text: "Yes! Now the captain gets ready to sail. You get paid when the ship leaves.", mood: "cheer" });
+      once(pip("ready"));
       if (!started.current) {
         started.current = true;
         setCoach(-1);
@@ -520,7 +563,7 @@ export default function Game({ driver, houseName, hood, onExit, onSpiral, spiral
       setPassed((set) => new Set(set).add(slip.id));
       if (deal.verdict === "bad") {
         grow("refusedBad", 5, 0, you?.capital ?? 0);
-        once({ id: "smart", text: "Smart! That deal wasn't worth the danger.", mood: "cheer" });
+        once(pip("smart"));
       }
     },
     [grow, once, you?.capital],
@@ -614,14 +657,9 @@ export default function Game({ driver, houseName, hood, onExit, onSpiral, spiral
         paused={pace === 0}
         fast={pace > 0 && pace < NORMAL_WATCH_MS}
         canPace={!!practice && started.current}
-        muted={muted}
         onPause={() => setSpeed(0)}
         onPlay={() => setSpeed(NORMAL_WATCH_MS)}
         onFast={() => setSpeed(spiral ? SPIRAL_MS : WEEK_IN_A_MINUTE_MS)}
-        onMute={() => {
-          sound.setMuted(!muted);
-          setMuted(!muted);
-        }}
         onBuild={() => setShopOpen(true)}
         onLedger={() => setLedger(true)}
         onHome={onExit}

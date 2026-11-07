@@ -23,6 +23,13 @@ There is no earlier code. All of it was started during the hackathon.
 | `vite`, `@vitejs/plugin-react`, `typescript` | Web build |
 | `@fontsource/fredoka` | Type |
 
+## Sound and voice
+
+| Asset | How it was made | License |
+| --- | --- | --- |
+| Pip's voice, `web/public/voice/` | Recorded with [`scripts/make_voice.py`](../scripts/make_voice.py), from the [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) speech model through `kokoro-onnx`, with `praat-parselmouth` shaping the melody of each sentence to suit its mood. None of these is needed to play. | Kokoro-82M is Apache-2.0, `kokoro-onnx` is MIT, `praat-parselmouth` is GPL-3.0 and is used only as a recording tool |
+| Music, sea, gulls and effects | Generated in the browser by [`web/src/soundscape.ts`](../web/src/soundscape.ts) and `web/src/audio.ts`. The tune was written for this game. | Same as this project |
+
 ## External services
 
 | Service | Used for |

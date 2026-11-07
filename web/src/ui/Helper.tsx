@@ -6,6 +6,8 @@ import { Pip } from "./art";
 export interface Say {
   id: string;
   text: string;
+  /** The recorded line to play, when it isn't the one named by the id. */
+  voice?: string;
   mood?: Mood;
   /** Sticks until answered, and shows these buttons. */
   actions?: { label: string; kind?: "yes" | "no"; run: () => void }[];
