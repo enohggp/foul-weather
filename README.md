@@ -2,22 +2,22 @@
 
 **You don't trade the goods. You carry the risk.**
 
-A marine insurance game where the economy is the game. Captains with their own wallets need cover before they sail. You price the risk, sign the slip, and hear a bell when the ship comes home or doesn't. One storm can bring down a chain of houses that all thought they had passed their risk on to someone else.
+A bright harbor game that a child can play, on top of an economy an auditor can check. Animal captains with their own wallets ask you to protect their ships. You say yes or no, collect your coins, and hear a bell when the ship comes home or sinks. Underneath is a real insurance market: one storm can bring down a chain of shops that all thought they had passed their risk on to someone else.
 
 Built at NEAR HACKATHON (1 to 14 November 2026). Track: **Games With Real Economies** (`games`). Also fits **Agent Economy** (`agents`).
 
-![The game during a great storm](docs/shots/storm.jpg)
+![A captain at your dock, with the harbor map behind](docs/shots/harbor.jpg)
 
 | | |
 | --- | --- |
 | Contract (NEAR testnet) | [`foulweather-harbor.testnet`](https://testnet.nearblocks.io/address/foulweather-harbor.testnet) |
-| Demo video, 2 minutes, captions, no sound | [`docs/demo/foul-weather-demo.mp4`](docs/demo/foul-weather-demo.mp4) |
+| Demo video, Pip plays the real game, captions, no sound | [`docs/demo/foul-weather-demo.mp4`](docs/demo/foul-weather-demo.mp4) |
 | Rulebook, every price and decision in one file | [`crates/core/src/rules.rs`](crates/core/src/rules.rs) |
 | The loop on paper | [`docs/GAME_LOOP.md`](docs/GAME_LOOP.md) |
 | How NEAR is used | [`docs/NEAR.md`](docs/NEAR.md) |
 | AI assistance and libraries | [`docs/AI_AND_LIBRARIES.md`](docs/AI_AND_LIBRARIES.md) |
 
-**Testnet only.** Crowns are game points. They can't be bought, sold or withdrawn, and there is no wagering.
+**Testnet only.** Coins (called crowns in the contract) are game points. They can't be bought, sold or withdrawn, and there is no wagering.
 
 ## The problem
 
@@ -38,20 +38,29 @@ npm run dev
 
 Open <http://localhost:3000>. Use that exact address, because Google and email sign-in only works there.
 
-The quickest way to see everything is **Take the guided tour** on the title screen. It plays the real game by itself for about four minutes, with captions, and finishes with a real move on NEAR testnet. It speaks if your browser has a speech voice. Press Esc to stop it.
+The quickest way to see everything is **Watch Pip play** on the title screen. Pip the parrot plays the real game for about three minutes, with captions, and finishes with a real move on NEAR testnet. The world holds still while Pip explains. It speaks if your browser has a speech voice. Press Esc to stop it.
 
 Or try it yourself. Each step below says what to do and what you should see.
 
-1. **Do:** type a house name and press **Open for business**. **See:** a sea chart and a slip from a captain. The world waits for you.
-2. **Do:** press **Why?** on the slip. **See:** the captain's reasoning, from their profit and their cash.
-3. **Do:** press **Survey for 14**. **See:** the likely risk narrows to one exact number, because the hull's real state was just drawn.
-4. **Do:** find a slip marked "Good odds" and press **Sign the slip**. **See:** the world starts, and a "Bound" stamp appears when the captain sails. Your ship gets a brass ring on the chart.
-5. **Do:** wait about 30 seconds. **See:** "Safe home" and two bells, or "Lost at sea" and one bell, and your capital changes.
-6. **Do:** open **Under the hood** and press **Watch a spiral collapse**, or open <http://localhost:3000/?demo=spiral>. **See:** a great storm, then houses struck off one after another in the Room's network. It ends with a list of who fell and in what order.
-7. **Do:** open **Under the hood** and press **Run a week in a minute**. **See:** a clerk runs your desk for a week, followed by charts of the market rate, Merrow's prices and the capital in the Room.
-8. **Do:** go back to the title, and press **Join the live Room**. **See:** the same game, shared and on NEAR testnet, with no wallet, popup or gas prompt. **Under the hood** links your account and your last transaction on an explorer.
+1. **Do:** type a shop name and press **Play!**. **See:** a bright harbor, a captain at your dock, and Pip. The world waits for you.
+2. **Do:** follow Pip's five short steps, then tap **Yes, protect it!**. **See:** the world starts. Coins fly to your counter when the ship sails, and it gets a gold ring on the map.
+3. **Do:** wait about 30 seconds. **See:** a cartoon of the ship coming home and a star to tap, or a shipwreck and a bill.
+4. **Do:** tap **Why?** on a captain's card, and **No thanks** on a deal in the red. **See:** the reasoning in plain words, and Pip's approval.
+5. **Do:** finish quests and tap **Build**. **See:** your stars become decorations on the map. Each level adds one new skill: sharing the danger, the ship inspector, the detective, and helping a broke captain.
+6. **Do:** tap **For grown-ups**, then **Run a week in a minute**. **See:** Pip runs your shop for a week, followed by charts of the average fee, town prices and the coins in all the shops.
+7. **Do:** in the same panel, press **Watch a spiral collapse**, or open <http://localhost:3000/?demo=spiral>. **See:** a great storm, then shops toppling one after another. It ends with a list of who fell and in what order.
+8. **Do:** go back to the title, and press **Play with others**. **See:** the same game, shared and on NEAR testnet, with no wallet, popup or gas prompt. **For grown-ups** links your account and your last transaction on an explorer.
 
-Sound is on by default. The bell button mutes it. No Rust is needed for any of this, because the compiled rules are in `web/public/engine.wasm`.
+Sound is on by default. The speaker button mutes it. No Rust is needed for any of this, because the compiled rules are in `web/public/engine.wasm`.
+
+## Two layers
+
+The cartoon is a friendly face on the real game. Nothing about it is faked.
+
+- **What a child sees:** one captain at a time, what you get now, what you pay if it sinks, and a meter from green to red. Yes or no.
+- **What is really happening:** each yes is a real quote on the slip. The client works out the fee and takes a share of the ship small enough that one wreck costs about a quarter of your coins, so a beginner can't lose everything to bad luck, and deals grow as the shop grows. The meter is the expected loss divided by the pay.
+- **What stays on the device:** levels, quests, stars and decorations. They teach the game one idea at a time and never touch the economy.
+- **What a grown-up can open:** **For grown-ups** shows the whole market: positions, reinsurance offers, the network of who relies on whom, goods prices, and the live contract.
 
 ## Check the chain without a wallet
 
@@ -76,7 +85,7 @@ cargo test -p nep245-ledger -p foul-core -p foul-engine-wasm
 node scripts/e2e-contract.mjs
 ```
 
-The first command runs 62 tests. They include a full-season audit on every watch, so every balance adds up to supply and no crown is ever created or destroyed, plus regression tests for the attacks found in code review ([`crates/core/tests/exploits.rs`](crates/core/tests/exploits.rs)). The second runs real transactions against the deployed contract.
+The first command runs 62 tests. They include a full-season audit on every watch, so every balance adds up to supply and no coin is ever created or destroyed, plus regression tests for the attacks found in code review ([`crates/core/tests/exploits.rs`](crates/core/tests/exploits.rs)). The second runs real transactions against the deployed contract.
 
 To see how the economy behaves over many seasons:
 
@@ -93,24 +102,24 @@ Results are in [`docs/GAME_LOOP.md`](docs/GAME_LOOP.md).
 node scripts/agent-house.mjs
 ```
 
-That is a complete underwriting house in about 100 lines. It opens its own account, founds a house marked as an agent, and signs slips through the contract's public methods. Set `NEAR_AI_API_KEY` and it asks a model on NEAR AI Cloud instead of using rules. Rewrite its `byRule` function and your agent is competing in the same Room as everyone else.
+That is a complete shop in about 100 lines. It opens its own account, founds a shop marked as an agent, and signs through the contract's public methods. Set `NEAR_AI_API_KEY` and it asks a model on NEAR AI Cloud instead of using rules. Rewrite its `byRule` function and your agent is competing in the same town as everyone else.
 
 ## What it looks like
 
 | | |
 | --- | --- |
-| ![A captain's slip with their reasoning](docs/shots/slip.jpg) | ![Your book at sea](docs/shots/desk.jpg) |
-| ![The Room as a great storm comes](docs/shots/room.jpg) | ![The list of houses that fell](docs/shots/collapse.jpg) |
+| ![Pip teaching the first deal](docs/shots/lesson.jpg) | ![A ship sinking in a cartoon storm](docs/shots/wreck.jpg) |
+| ![Shops toppling in a great storm](docs/shots/spiral.jpg) | ![The list of shops that fell](docs/shots/collapse.jpg) |
 
 ## How it fits the track
 
 | The track asks for | Foul Weather |
 | --- | --- |
-| NPCs with wallets | 12 captains and 6 Room houses, each with a NEAR sub-account that has no key at all. Only the rules can move their money. |
-| Player-owned markets | Players trade risk with each other and the Room through reinsurance offers. Policies are NEP-245 tokens, so a claim can be sold. |
+| NPCs with wallets | 12 animal captains and 6 rival shops, each with a NEAR sub-account that has no key at all. Only the rules can move their money. |
+| Player-owned markets | Players trade risk with each other and the rival shops through reinsurance offers. Policies are NEP-245 tokens, so a claim can be sold. |
 | Economies that evolve without a dev patch | Premiums, sailings, goods prices and new capital feed each other, and live NEAR Intents quotes set the sea. |
-| Judged on the game loop | See [`docs/GAME_LOOP.md`](docs/GAME_LOOP.md). In 900 seasons played by bots, signing everything failed 54% to 72% of the time, and careful play more than doubled the money. |
-| Players never notice the chain | No wallet, seed phrase or gas prompt in normal play. |
+| Judged on the game loop | See [`docs/GAME_LOOP.md`](docs/GAME_LOOP.md). In bot-played seasons, signing everything failed 54% to 72% of the time, and careful play more than doubled the money. On the yes-or-no screen, saying yes to everything loses money and picking the green deals grows it. |
+| Players never notice the chain | No wallet, seed phrase or gas prompt in normal play. A child can play it. |
 
 The track's starter prompt asks for these too:
 
@@ -118,8 +127,8 @@ The track's starter prompt asks for these too:
 | --- | --- |
 | NEP-245, one contract for every item | `crown`, `cargo:*` and `policy:*` in [`crates/contract`](crates/contract/src/lib.rs) |
 | Social or email login | NEAR Auth, or an instant guest account |
-| Pricing rules in one readable file, with reasoning in a tooltip | [`rules.rs`](crates/core/src/rules.rs), **Why?** on each slip, and hover any price in the Harbor tab |
-| A broke merchant closes until someone invests | A broke captain is laid up until a house refits them, and repays from later voyages |
+| Pricing rules in one readable file, with reasoning in a tooltip | [`rules.rs`](crates/core/src/rules.rs), **Why?** on each captain's card, and hover any price in the Harbor tab under **For grown-ups** |
+| A broke merchant closes until someone invests | A broke captain is laid up until a shop helps them, and repays from later voyages |
 | A week of trading in a minute | **Run a week in a minute** |
 
 ## How it's built
@@ -129,7 +138,7 @@ crates/core            The rules, once. Deterministic, integer-only, no chain co
 crates/contract        The rules on NEAR: world, tokens, front door. No game server.
 crates/engine-wasm     The same rules in the browser, for practice and fast-forward.
 crates/nep245-ledger   A reusable NEP-245 ledger with no SDK dependency.
-web/                   React client. All NEAR calls are in web/src/live.ts.
+web/                   React client, with all art drawn in code. All NEAR calls are in web/src/live.ts.
 scripts/               Deploy helpers, keeper, verification, agent house.
 ```
 
@@ -147,14 +156,15 @@ cp target/wasm32-unknown-unknown/release/foul_engine_wasm.wasm web/public/engine
 
 ## Known limits
 
-- **Live Room in the background.** Players' browsers tick the world. With no one online it pauses, unless `scripts/keeper.mjs` runs. Live sea readings on-chain also need the keeper.
+- **Live town in the background.** Players' browsers tick the world. With no one online it pauses, unless `scripts/keeper.mjs` runs. Live sea readings on-chain also need the keeper.
 - **Google and email sign-in** only works at `http://localhost:3000` until a site has its own NEAR Auth client id. A login opened on one device can't yet be restored on another. Guest play has no such limit.
 - **Surveys are private in the page, not on-chain.** See [`docs/NEAR.md`](docs/NEAR.md).
 - **Pay from any chain is a preview.** Quotes are live, but nothing can be bought.
 - **The owner can reset the world** while this is a hackathon build.
-- **Two houses run by one person can pass money between them** through reinsurance at high rates, or by selling a recovery. Crowns are game points, so this only affects the leaderboard.
+- **Two shops run by one person can pass money between them** through reinsurance at high rates, or by selling a recovery. Coins are game points, so this only affects the leaderboard.
 - **The busiest watches can leave their last events out of the logs**, because NEAR limits log size. The state is always complete.
 - **Practice and fast-forward run in the browser**, using the contract's rules but no transactions. A season on-chain plays in real time.
+- **Levels, quests, stars and decorations live in the browser.** They stay on one device and are not on-chain.
 
 ## License
 

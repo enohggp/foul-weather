@@ -58,9 +58,11 @@ function scriptedEntropy(seed: number, step: number): number[] {
   return out;
 }
 
-export const NORMAL_WATCH_MS = 4500;
+export const NORMAL_WATCH_MS = 6500;
 /** A week of 42 watches in one minute. */
 export const WEEK_IN_A_MINUTE_MS = Math.round(60000 / 42);
+/** The chain of failures, quick enough to watch in one go. */
+export const SPIRAL_MS = 1000;
 
 export class PracticeDriver implements Driver {
   readonly mode = "practice" as const;

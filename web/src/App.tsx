@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Engine, PracticeDriver, WEEK_IN_A_MINUTE_MS } from "./engine";
+import { Engine, PracticeDriver, SPIRAL_MS } from "./engine";
 import Game from "./Game";
 import { CONTRACT, EXPLORER, LiveDriver } from "./live";
 import { SeaWatch, type Reading } from "./seaCore";
 import type { Driver } from "./types";
 import { beginSignIn, finishSignIn, loginAvailable, returningFromSignIn } from "./auth";
 import { Title, type TitleChoice } from "./ui/Overlays";
+import { dealFor } from "./ui/Visitors";
 import type { Hood } from "./ui/Side";
 
 /** A fixed season that always ends in a chain of failures. See scripts/find-spiral.mjs. */
@@ -42,6 +43,12 @@ export default function App() {
       if (!engine) return;
       const driver = new PracticeDriver(engine, Math.floor(Math.random() * 2 ** 31));
       await driver.act({ kind: "found_house", name });
+      // Start with a safe, well-paid captain at the dock for the first lesson.
+      for (let i = 0; i < 40; i++) {
+        const you = driver.view.houses.find((h) => h.you);
+        if (driver.view.slips.some((s) => s.qty > 0 && dealFor(driver.view, s, you).verdict === "great")) break;
+        driver.skip(1);
+      }
       setHoodExtra({ contract: null, account: null, lastTx: null });
       setSession({ key: keyRef.current++, driver, name, autoplay: false, spiral: false });
     },
@@ -56,7 +63,7 @@ export default function App() {
     await driver.act({ kind: "found_house", name });
     await driver.act({ kind: "set_clerk", on: true });
     await driver.act({ kind: "summon_storm" });
-    driver.setPace(WEEK_IN_A_MINUTE_MS);
+    driver.setPace(SPIRAL_MS);
     setSession({ key: keyRef.current++, driver, name, autoplay: true, spiral: true });
   }, [engine, session]);
 

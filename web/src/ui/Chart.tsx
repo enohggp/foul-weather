@@ -1,13 +1,18 @@
-// The sea chart. A static engraving is drawn once; ships and weather move over it.
+// The harbor map: a bright little world of islands, ships and weather.
 
 import { useEffect, useRef, useState } from "react";
-import type { Driver, View, Voyage } from "../types";
-import { crowns, seaWord } from "../words";
+import { cargo, fullName, place, shopName } from "../cast";
+import type { Driver, House, View, Voyage } from "../types";
+import { crowns } from "../words";
+import { AWNINGS, Character, YOUR_AWNING } from "./art";
+import { drawShip, SAILS } from "./scene";
 
 const W = 1000;
 const H = 880;
+const INK = "#3b2a1e";
+const TAU = Math.PI * 2;
 
-const PORTS: [number, number][] = [
+export const PORTS: [number, number][] = [
   [196, 452],
   [452, 136],
   [622, 356],
@@ -16,7 +21,6 @@ const PORTS: [number, number][] = [
   [832, 628],
 ];
 
-// Bend of each lane, as an offset of the curve's midpoint.
 const BENDS: [number, number][] = [
   [-30, -36],
   [14, -50],
@@ -25,7 +29,28 @@ const BENDS: [number, number][] = [
   [40, 70],
 ];
 
+/** Where each rival's shop stands in Merrow Town. */
+const SHOPS: [number, number][] = [
+  [70, 300],
+  [128, 352],
+  [60, 196],
+  [66, 610],
+  [126, 560],
+  [58, 716],
+  [122, 240],
+  [124, 668],
+  [40, 450],
+  [30, 540],
+];
+const YOUR_SHOP: [number, number] = [116, 452];
+
 interface Point {
+  x: number;
+  y: number;
+}
+
+export interface Fit {
+  scale: number;
   x: number;
   y: number;
 }
@@ -52,287 +77,577 @@ function seeded(seed: number) {
   };
 }
 
-/** An irregular island outline around a centre. */
-function coast(cx: number, cy: number, rx: number, ry: number, seed: number, points = 46): Point[] {
+function coast(cx: number, cy: number, rx: number, ry: number, seed: number, points = 40): Point[] {
   const r = seeded(seed);
-  const phases = [r() * 6.28, r() * 6.28, r() * 6.28];
+  const phases = [r() * 6.28, r() * 6.28];
   const out: Point[] = [];
   for (let i = 0; i < points; i++) {
-    const a = (i / points) * Math.PI * 2;
-    const wobble =
-      1 +
-      0.16 * Math.sin(a * 3 + phases[0]) +
-      0.09 * Math.sin(a * 7 + phases[1]) +
-      0.05 * Math.sin(a * 13 + phases[2]) +
-      (r() - 0.5) * 0.05;
+    const a = (i / points) * TAU;
+    const wobble = 1 + 0.12 * Math.sin(a * 3 + phases[0]) + 0.06 * Math.sin(a * 5 + phases[1]);
     out.push({ x: cx + Math.cos(a) * rx * wobble, y: cy + Math.sin(a) * ry * wobble });
   }
   return out;
 }
 
-function mainland(): Point[] {
-  const r = seeded(77);
+function mainland(push: number): Point[] {
   const [top, bottom, left] = [-700, H + 700, -900];
   const out: Point[] = [{ x: left, y: top }];
-  const steps = 120;
+  const steps = 90;
   for (let i = 0; i <= steps; i++) {
-    const t = i / steps;
-    const y = top + t * (bottom - top);
-    const bay = -44 * Math.exp(-(((y - 452) / 70) ** 2));
+    const y = top + (i / steps) * (bottom - top);
     const v = y / H;
-    const x =
-      176 +
-      bay +
-      50 * Math.sin(v * 3.1 + 0.4) * (1 - v * 0.4) +
-      20 * Math.sin(v * 11 + 1) +
-      9 * Math.sin(v * 27) +
-      (r() - 0.5) * 7;
-    out.push({ x, y });
+    const bay = -30 * Math.exp(-(((y - 452) / 80) ** 2));
+    out.push({ x: 172 + bay + 26 * Math.sin(v * 3.1 + 0.4) + 10 * Math.sin(v * 9 + 1) + push, y });
   }
   out.push({ x: left, y: bottom });
   return out;
 }
 
-function trace(ctx: CanvasRenderingContext2D, points: Point[]) {
+function smooth(ctx: CanvasRenderingContext2D, points: Point[]) {
   ctx.beginPath();
-  points.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
+  points.forEach((p, i) => {
+    const next = points[(i + 1) % points.length];
+    const mx = (p.x + next.x) / 2;
+    const my = (p.y + next.y) / 2;
+    if (i === 0) ctx.moveTo(mx, my);
+    else ctx.quadraticCurveTo(p.x, p.y, mx, my);
+  });
   ctx.closePath();
 }
 
-function land(ctx: CanvasRenderingContext2D, shape: Point[], seed: number) {
-  ctx.save();
-  // Depth lines, engraved outward from the shore.
-  for (let i = 5; i >= 1; i--) {
-    trace(ctx, shape);
-    ctx.lineWidth = i * 4.2;
-    ctx.lineJoin = "round";
-    ctx.strokeStyle = `rgba(62, 104, 108, ${0.035 + (5 - i) * 0.012})`;
-    ctx.stroke();
-  }
-  trace(ctx, shape);
-  ctx.fillStyle = "#e7d6ab";
+function land(ctx: CanvasRenderingContext2D, sand: Point[], grass: Point[], grassColor: string, edge: string) {
+  ctx.lineJoin = "round";
+  smooth(ctx, sand);
+  ctx.lineWidth = 34;
+  ctx.strokeStyle = "rgba(165,240,238,0.55)";
+  ctx.stroke();
+  ctx.lineWidth = 16;
+  ctx.strokeStyle = "rgba(235,255,250,0.85)";
+  ctx.stroke();
+  smooth(ctx, sand);
+  ctx.fillStyle = "#ffe3a1";
   ctx.fill();
-  ctx.clip();
-  // Hachures for high ground.
-  const r = seeded(seed);
-  const xs = shape.map((p) => p.x);
-  const ys = shape.map((p) => p.y);
-  const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
-  ctx.strokeStyle = "rgba(92, 70, 40, 0.34)";
-  ctx.lineWidth = 0.8;
-  const count = Math.min(120, ((x1 - x0) * (y1 - y0)) / 900);
-  for (let i = 0; i < count; i++) {
-    const x = x0 + r() * (x1 - x0);
-    const y = y0 + r() * (y1 - y0);
-    ctx.beginPath();
-    ctx.moveTo(x - 4, y + 3);
-    ctx.lineTo(x, y - 3);
-    ctx.lineTo(x + 4, y + 3);
-    ctx.stroke();
-  }
-  ctx.restore();
-  trace(ctx, shape);
-  ctx.strokeStyle = "#4a3a26";
-  ctx.lineWidth = 1.3;
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = "#e6b866";
+  ctx.stroke();
+  smooth(ctx, grass);
+  ctx.fillStyle = grassColor;
+  ctx.fill();
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = edge;
+  ctx.stroke();
+}
+
+function shrink(points: Point[], cx: number, cy: number, by: number) {
+  return points.map((p) => ({ x: cx + (p.x - cx) * by, y: cy + (p.y - cy) * by }));
+}
+
+function outlined(ctx: CanvasRenderingContext2D, fill: string, width = 2.5) {
+  ctx.fillStyle = fill;
+  ctx.fill();
+  ctx.lineWidth = width;
+  ctx.strokeStyle = INK;
   ctx.lineJoin = "round";
   ctx.stroke();
 }
 
-function compass(ctx: CanvasRenderingContext2D, x: number, y: number, size: number) {
-  ctx.save();
-  ctx.translate(x, y);
-  for (let ring = 0; ring < 2; ring++) {
+function tree(ctx: CanvasRenderingContext2D, x: number, y: number, s: number, color = "#4fb84a") {
+  ctx.beginPath();
+  ctx.roundRect(x - 2.5 * s, y - 8 * s, 5 * s, 10 * s, 1);
+  outlined(ctx, "#8b5a33", 2);
+  ctx.beginPath();
+  ctx.arc(x - 6 * s, y - 13 * s, 7.5 * s, 0, TAU);
+  ctx.moveTo(x + 13.5 * s, y - 13 * s);
+  ctx.arc(x + 6 * s, y - 13 * s, 7.5 * s, 0, TAU);
+  ctx.moveTo(x + 9 * s, y - 20 * s);
+  ctx.arc(x, y - 20 * s, 9 * s, 0, TAU);
+  outlined(ctx, color, 2.2);
+}
+
+function pine(ctx: CanvasRenderingContext2D, x: number, y: number, s: number) {
+  ctx.beginPath();
+  ctx.roundRect(x - 2.5 * s, y - 6 * s, 5 * s, 8 * s, 1);
+  outlined(ctx, "#8b5a33", 2);
+  for (let i = 0; i < 3; i++) {
+    const top = y - (16 + i * 9) * s;
     ctx.beginPath();
-    ctx.arc(0, 0, size * (ring ? 0.82 : 0.9), 0, Math.PI * 2);
-    ctx.strokeStyle = "rgba(74, 58, 38, 0.55)";
-    ctx.lineWidth = 0.9;
+    ctx.moveTo(x - (13 - i * 3) * s, top + 12 * s);
+    ctx.lineTo(x, top - 3 * s);
+    ctx.lineTo(x + (13 - i * 3) * s, top + 12 * s);
+    ctx.closePath();
+    outlined(ctx, i === 2 ? "#3f9a58" : "#2f8450", 2);
+  }
+}
+
+function palm(ctx: CanvasRenderingContext2D, x: number, y: number, s: number) {
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = 6 * s;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.quadraticCurveTo(x - 4 * s, y - 16 * s, x + 4 * s, y - 28 * s);
+  ctx.stroke();
+  ctx.strokeStyle = "#a9743f";
+  ctx.lineWidth = 3.4 * s;
+  ctx.stroke();
+  for (let i = 0; i < 5; i++) {
+    const a = -Math.PI * (0.05 + i * 0.225);
+    const [ox, oy] = [x + 4 * s, y - 28 * s];
+    ctx.beginPath();
+    ctx.moveTo(ox, oy);
+    ctx.quadraticCurveTo(ox + Math.cos(a) * 12 * s, oy + Math.sin(a) * 16 * s, ox + Math.cos(a) * 22 * s, oy + 4 * s + Math.sin(a) * 8 * s);
+    ctx.quadraticCurveTo(ox + Math.cos(a) * 10 * s, oy + Math.sin(a) * 6 * s, ox, oy);
+    outlined(ctx, "#4fb84a", 1.6);
+  }
+}
+
+function house(ctx: CanvasRenderingContext2D, x: number, y: number, s: number, wall: string, roof: string) {
+  ctx.beginPath();
+  ctx.roundRect(x - 13 * s, y - 20 * s, 26 * s, 20 * s, 2);
+  outlined(ctx, wall);
+  ctx.beginPath();
+  ctx.moveTo(x - 17 * s, y - 19 * s);
+  ctx.lineTo(x, y - 34 * s);
+  ctx.lineTo(x + 17 * s, y - 19 * s);
+  ctx.closePath();
+  outlined(ctx, roof);
+  ctx.beginPath();
+  ctx.roundRect(x - 4 * s, y - 11 * s, 8 * s, 11 * s, 1);
+  outlined(ctx, "#8b5a33", 1.8);
+}
+
+function lighthouse(ctx: CanvasRenderingContext2D, x: number, y: number) {
+  ctx.beginPath();
+  ctx.moveTo(x - 11, y);
+  ctx.lineTo(x - 6, y - 50);
+  ctx.lineTo(x + 6, y - 50);
+  ctx.lineTo(x + 11, y);
+  ctx.closePath();
+  outlined(ctx, "#ffffff");
+  ctx.fillStyle = "#e8504a";
+  ctx.fillRect(x - 8.5, y - 36, 17, 11);
+  ctx.fillRect(x - 10, y - 16, 20, 11);
+  ctx.beginPath();
+  ctx.roundRect(x - 8, y - 62, 16, 13, 2);
+  outlined(ctx, "#ffd23f");
+  ctx.beginPath();
+  ctx.moveTo(x - 10, y - 62);
+  ctx.lineTo(x, y - 72);
+  ctx.lineTo(x + 10, y - 62);
+  ctx.closePath();
+  outlined(ctx, "#e8504a");
+}
+
+function plaque(ctx: CanvasRenderingContext2D, text: string, x: number, y: number) {
+  ctx.font = `600 17px "Fredoka", "Trebuchet MS", sans-serif`;
+  const width = ctx.measureText(text).width + 22;
+  ctx.beginPath();
+  ctx.roundRect(x - width / 2, y - 14, width, 27, 9);
+  outlined(ctx, "#fff8e8", 2.5);
+  ctx.fillStyle = INK;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(text, x, y + 0.5);
+  ctx.textBaseline = "alphabetic";
+}
+
+function paintWorld(ctx: CanvasRenderingContext2D) {
+  const sea = ctx.createLinearGradient(0, -300, 0, H + 300);
+  sea.addColorStop(0, "#5fd8e8");
+  sea.addColorStop(1, "#2bb0d6");
+  ctx.fillStyle = sea;
+  ctx.fillRect(-1400, -1400, W + 2800, H + 2800);
+
+  // Sparkles on the water.
+  const r = seeded(9);
+  ctx.strokeStyle = "rgba(255,255,255,0.45)";
+  ctx.lineWidth = 2.4;
+  ctx.lineCap = "round";
+  for (let i = 0; i < 170; i++) {
+    const x = 220 + r() * 1100;
+    const y = -240 + r() * 1360;
+    ctx.beginPath();
+    ctx.moveTo(x - 9, y);
+    ctx.quadraticCurveTo(x - 4, y - 5, x, y);
+    ctx.quadraticCurveTo(x + 4, y + 5, x + 9, y);
     ctx.stroke();
   }
-  for (let i = 0; i < 16; i++) {
-    const major = i % 4 === 0;
-    const middle = i % 2 === 0;
-    const length = major ? size : middle ? size * 0.68 : size * 0.44;
-    const width = major ? size * 0.11 : size * 0.07;
-    ctx.save();
-    ctx.rotate((i * Math.PI) / 8);
-    for (const side of [1, -1]) {
+
+  // Merrow Town and the mainland.
+  land(ctx, mainland(0), mainland(-22), "#86df5c", "#5cbb45");
+  const trees = seeded(5);
+  for (let i = 0; i < 46; i++) {
+    const x = -220 + trees() * 330;
+    const y = -220 + trees() * 1330;
+    if (Math.abs(y - 452) < 320 && x > -30) continue;
+    tree(ctx, x, y, 1 + trees() * 0.4, i % 3 ? "#4fb84a" : "#3fa84a");
+  }
+  (
+    [
+      [18, 372, "#fff4dd", "#e8504a"],
+      [28, 520, "#ffe6c7", "#2d9cdb"],
+      [-16, 460, "#fff4dd", "#f2a63a"],
+      [-10, 300, "#ffe6c7", "#b45bb0"],
+      [-8, 620, "#fff4dd", "#e8504a"],
+    ] as [number, number, string, string][]
+  ).forEach(([x, y, a, b]) => house(ctx, x, y, 1.05, a, b));
+
+  // The pier.
+  ctx.beginPath();
+  ctx.roundRect(142, 442, 62, 18, 3);
+  outlined(ctx, "#b9773f");
+  ctx.strokeStyle = "rgba(59,42,30,0.5)";
+  ctx.lineWidth = 2;
+  for (let x = 152; x < 204; x += 11) {
+    ctx.beginPath();
+    ctx.moveTo(x, 443);
+    ctx.lineTo(x, 459);
+    ctx.stroke();
+  }
+  lighthouse(ctx, 176, 410);
+
+  // Wheat Island.
+  const wheat = coast(478, 96, 84, 56, 21);
+  land(ctx, wheat, shrink(wheat, 478, 96, 0.8), "#a5e46a", "#7fc452");
+  [
+    [440, 90],
+    [486, 72],
+    [528, 96],
+    [474, 118],
+  ].forEach(([x, y]) => {
+    ctx.beginPath();
+    ctx.roundRect(x - 22, y - 12, 44, 24, 6);
+    outlined(ctx, "#ffd23f", 2);
+    ctx.strokeStyle = "#d99a1e";
+    ctx.lineWidth = 2;
+    for (let i = -16; i <= 16; i += 8) {
       ctx.beginPath();
-      ctx.moveTo(0, -length);
-      ctx.lineTo(side * width, -width);
-      ctx.lineTo(0, 0);
-      ctx.closePath();
-      ctx.fillStyle = side > 0 ? "rgba(60, 46, 30, 0.82)" : "rgba(232, 218, 182, 0.9)";
-      ctx.fill();
-      ctx.strokeStyle = "rgba(60, 46, 30, 0.7)";
-      ctx.lineWidth = 0.6;
+      ctx.moveTo(x + i, y - 8);
+      ctx.lineTo(x + i, y + 8);
       ctx.stroke();
+    }
+  });
+
+  // Timber Island.
+  const wood = coast(664, 328, 62, 48, 22);
+  land(ctx, wood, shrink(wood, 664, 328, 0.78), "#6fce5c", "#50ad48");
+  [
+    [640, 330],
+    [664, 318],
+    [690, 336],
+    [652, 354],
+    [680, 362],
+    [710, 318],
+  ].forEach(([x, y]) => pine(ctx, x, y, 0.95));
+
+  // Iron Volcano.
+  const rock = coast(418, 800, 92, 50, 23);
+  land(ctx, rock, shrink(rock, 418, 800, 0.8), "#b6a79b", "#8f8074");
+  ctx.beginPath();
+  ctx.moveTo(366, 830);
+  ctx.lineTo(404, 764);
+  ctx.quadraticCurveTo(418, 756, 432, 764);
+  ctx.lineTo(474, 830);
+  ctx.closePath();
+  outlined(ctx, "#7d6a60");
+  ctx.beginPath();
+  ctx.moveTo(404, 764);
+  ctx.quadraticCurveTo(418, 776, 432, 764);
+  ctx.lineTo(446, 788);
+  ctx.quadraticCurveTo(436, 780, 428, 800);
+  ctx.quadraticCurveTo(420, 776, 410, 794);
+  ctx.quadraticCurveTo(402, 778, 392, 786);
+  ctx.closePath();
+  outlined(ctx, "#ff7b39", 2);
+
+  // Spice Island.
+  const spice = coast(868, 150, 82, 58, 24);
+  land(ctx, spice, shrink(spice, 868, 150, 0.8), "#a5e46a", "#7fc452");
+  [
+    [826, 152],
+    [860, 128],
+    [900, 146],
+    [870, 176],
+    [916, 176],
+  ].forEach(([x, y]) => palm(ctx, x, y, 1.05));
+
+  // Silk Palace.
+  const silk = coast(880, 664, 78, 72, 25);
+  land(ctx, silk, shrink(silk, 880, 664, 0.8), "#c9eb8c", "#9ccb62");
+  ctx.beginPath();
+  ctx.roundRect(838, 650, 84, 42, 3);
+  outlined(ctx, "#ffe6f2");
+  for (const [x, size] of [
+    [880, 26],
+    [846, 15],
+    [914, 15],
+  ]) {
+    ctx.beginPath();
+    ctx.arc(x, 650, size, Math.PI, 0);
+    ctx.quadraticCurveTo(x + size * 0.2, 650 - size * 1.1, x, 650 - size * 1.7);
+    ctx.quadraticCurveTo(x - size * 0.2, 650 - size * 1.1, x - size, 650);
+    outlined(ctx, "#e36ba4");
+  }
+  ctx.beginPath();
+  ctx.roundRect(872, 668, 16, 24, [8, 8, 0, 0]);
+  outlined(ctx, "#8b5a33", 2);
+
+  // Little islands.
+  for (const [x, y, rx, ry, seed] of [
+    [742, 508, 24, 16, 26],
+    [330, 262, 18, 12, 27],
+    [952, 402, 28, 20, 28],
+    [296, 646, 20, 11, 29],
+  ]) {
+    const isle = coast(x, y, rx, ry, seed);
+    land(ctx, isle, shrink(isle, x, y, 0.66), "#a5e46a", "#7fc452");
+    palm(ctx, x, y + 2, 0.7);
+  }
+
+  // Names, each saying what the island makes.
+  plaque(ctx, "Merrow Town", 108, 512);
+  plaque(ctx, "Wheat Island", 470, 176);
+  plaque(ctx, "Timber Island", 664, 396);
+  plaque(ctx, "Iron Volcano", 430, 842);
+  plaque(ctx, "Spice Island", 868, 228);
+  plaque(ctx, "Silk Palace", 880, 748);
+}
+
+function shop(ctx: CanvasRenderingContext2D, x: number, y: number, s: number, roof: string, closed: boolean, you: boolean) {
+  ctx.beginPath();
+  ctx.roundRect(x - 22 * s, y - 28 * s, 44 * s, 28 * s, 3);
+  outlined(ctx, closed ? "#cfc6ba" : "#fff4dd");
+  ctx.beginPath();
+  ctx.moveTo(x - 27 * s, y - 27 * s);
+  ctx.lineTo(x - 20 * s, y - 42 * s);
+  ctx.lineTo(x + 20 * s, y - 42 * s);
+  ctx.lineTo(x + 27 * s, y - 27 * s);
+  ctx.closePath();
+  outlined(ctx, closed ? "#9a9288" : roof);
+  // Striped awning.
+  ctx.fillStyle = "rgba(255,255,255,0.75)";
+  for (let i = -2; i <= 1; i += 2) ctx.fillRect(x + i * 11 * s, y - 41 * s, 9 * s, 13 * s);
+  ctx.beginPath();
+  ctx.roundRect(x - 6 * s, y - 17 * s, 12 * s, 17 * s, 2);
+  outlined(ctx, "#8b5a33", 2);
+  if (closed) {
+    ctx.save();
+    ctx.translate(x, y - 22 * s);
+    ctx.rotate(-0.16);
+    ctx.beginPath();
+    ctx.roundRect(-26, -9, 52, 18, 3);
+    outlined(ctx, "#e8504a", 2);
+    ctx.fillStyle = "#fff";
+    ctx.font = `700 12px "Fredoka", sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("CLOSED", 0, 1);
+    ctx.textBaseline = "alphabetic";
+    ctx.restore();
+  }
+  if (you) {
+    ctx.beginPath();
+    ctx.roundRect(x - 2, y - 66 * s, 4, 26 * s, 2);
+    outlined(ctx, "#8b5a33", 1.5);
+    ctx.beginPath();
+    ctx.moveTo(x + 2, y - 66 * s);
+    ctx.lineTo(x + 24, y - 59 * s);
+    ctx.lineTo(x + 2, y - 52 * s);
+    ctx.closePath();
+    outlined(ctx, "#ffc531", 2);
+  }
+}
+
+function stormCloud(ctx: CanvasRenderingContext2D, x: number, y: number, s: number, t: number, active: boolean) {
+  const bob = Math.sin(t * 2) * 3;
+  ctx.save();
+  ctx.translate(x, y + bob);
+  if (active) {
+    ctx.strokeStyle = "rgba(235,245,255,0.8)";
+    ctx.lineWidth = 2.6;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    for (let i = 0; i < 12; i++) {
+      const dx = -38 * s + (i * 76 * s) / 11;
+      const fall = ((t * 90 + i * 37) % 44) * s;
+      ctx.moveTo(dx, 14 * s + fall);
+      ctx.lineTo(dx - 3, 24 * s + fall);
+    }
+    ctx.stroke();
+  }
+  ctx.beginPath();
+  ctx.arc(-26 * s, 2 * s, 18 * s, 0, TAU);
+  ctx.moveTo(25 * s, -8 * s);
+  ctx.arc(0, -8 * s, 25 * s, 0, TAU);
+  ctx.moveTo(45 * s, 2 * s);
+  ctx.arc(26 * s, 2 * s, 19 * s, 0, TAU);
+  ctx.fillStyle = active ? "#4a4a7e" : "rgba(92,96,146,0.86)";
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(0, 10 * s, 44 * s, 13 * s, 0, 0, TAU);
+  ctx.fill();
+  // An angry little face.
+  ctx.strokeStyle = "#fff";
+  ctx.fillStyle = "#fff";
+  ctx.lineWidth = 3.2 * s;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(-17 * s, -12 * s);
+  ctx.lineTo(-6 * s, -6 * s);
+  ctx.moveTo(17 * s, -12 * s);
+  ctx.lineTo(6 * s, -6 * s);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(-11 * s, 0, 3.4 * s, 0, TAU);
+  ctx.moveTo(14.4 * s, 0);
+  ctx.arc(11 * s, 0, 3.4 * s, 0, TAU);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(0, 11 * s, 6 * s, Math.PI, 0);
+  ctx.stroke();
+  if (active && Math.sin(t * 7 + x) > 0.8) {
+    ctx.beginPath();
+    ctx.moveTo(4 * s, 16 * s);
+    ctx.lineTo(-8 * s, 34 * s);
+    ctx.lineTo(1 * s, 34 * s);
+    ctx.lineTo(-7 * s, 54 * s);
+    ctx.lineTo(13 * s, 28 * s);
+    ctx.lineTo(4 * s, 28 * s);
+    ctx.lineTo(12 * s, 16 * s);
+    ctx.closePath();
+    ctx.fillStyle = "#ffe66b";
+    ctx.fill();
+    ctx.strokeStyle = "#f2a63a";
+    ctx.lineWidth = 2.2;
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function decorations(ctx: CanvasRenderingContext2D, built: string[], t: number) {
+  if (built.includes("flags")) {
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(84, 412);
+    ctx.quadraticCurveTo(116, 424, 150, 408);
+    ctx.stroke();
+    const colors = ["#e8504a", "#ffd23f", "#2d9cdb", "#2fae6e"];
+    for (let i = 0; i < 7; i++) {
+      const u = (i + 0.5) / 7;
+      const x = 84 + u * 66;
+      const y = 412 + Math.sin(u * Math.PI) * 9;
+      ctx.beginPath();
+      ctx.moveTo(x - 4, y);
+      ctx.lineTo(x + 4, y);
+      ctx.lineTo(x, y + 9);
+      ctx.closePath();
+      ctx.fillStyle = colors[i % 4];
+      ctx.fill();
+    }
+  }
+  if (built.includes("flowers")) {
+    const colors = ["#ff6b9d", "#ffd23f", "#b45bb0"];
+    for (let i = 0; i < 10; i++) {
+      const x = 10 + (i % 5) * 13;
+      const y = 652 + Math.floor(i / 5) * 13;
+      ctx.beginPath();
+      ctx.arc(x, y, 4.5, 0, TAU);
+      outlined(ctx, colors[i % 3], 1.5);
+    }
+  }
+  if (built.includes("fountain")) {
+    ctx.beginPath();
+    ctx.ellipse(52, 462, 21, 10, 0, 0, TAU);
+    outlined(ctx, "#b6c7d3");
+    ctx.beginPath();
+    ctx.ellipse(52, 461, 15, 6.5, 0, 0, TAU);
+    ctx.fillStyle = "#6fd3f7";
+    ctx.fill();
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 2.4;
+    for (let i = 0; i < 3; i++) {
+      const lift = 18 + Math.sin(t * 5 + i) * 4;
+      ctx.beginPath();
+      ctx.moveTo(52, 460);
+      ctx.quadraticCurveTo(52 + (i - 1) * 9, 460 - lift, 52 + (i - 1) * 16, 460);
+      ctx.stroke();
+    }
+  }
+  if (built.includes("statue")) {
+    ctx.beginPath();
+    ctx.roundRect(46, 392, 24, 24, 3);
+    outlined(ctx, "#cfc6ba");
+    ctx.beginPath();
+    ctx.ellipse(58, 382, 10, 13, 0, 0, TAU);
+    outlined(ctx, "#ffc531");
+    ctx.beginPath();
+    ctx.arc(62, 368, 8, 0, TAU);
+    outlined(ctx, "#ffc531");
+  }
+  if (built.includes("wheel")) {
+    ctx.save();
+    ctx.translate(134, 196);
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = INK;
+    ctx.beginPath();
+    ctx.moveTo(-14, 30);
+    ctx.lineTo(0, 0);
+    ctx.lineTo(14, 30);
+    ctx.stroke();
+    ctx.rotate(t * 0.5);
+    ctx.beginPath();
+    ctx.arc(0, 0, 25, 0, TAU);
+    ctx.stroke();
+    const colors = ["#e8504a", "#ffd23f", "#2d9cdb", "#2fae6e", "#b45bb0", "#f2a63a"];
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * TAU;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(Math.cos(a) * 25, Math.sin(a) * 25);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(Math.cos(a) * 25, Math.sin(a) * 25, 5.5, 0, TAU);
+      outlined(ctx, colors[i], 2);
     }
     ctx.restore();
   }
-  ctx.fillStyle = "#3a2c1c";
-  ctx.font = `italic ${size * 0.26}px "IM Fell English", serif`;
-  ctx.textAlign = "center";
-  ctx.fillText("N", 0, -size - 5);
-  ctx.restore();
 }
 
-function paintChart(ctx: CanvasRenderingContext2D) {
-  const sea = ctx.createRadialGradient(W * 0.56, H * 0.46, 120, W * 0.56, H * 0.46, 980);
-  sea.addColorStop(0, "#dfe3cf");
-  sea.addColorStop(0.7, "#d3d6bd");
-  sea.addColorStop(1, "#bdb793");
-  ctx.fillStyle = sea;
-  ctx.fillRect(-1200, -1200, W + 2400, H + 2400);
-
-  // Rhumb lines from the compass.
-  const origin = { x: 650, y: 776 };
-  ctx.strokeStyle = "rgba(92, 70, 40, 0.13)";
-  ctx.lineWidth = 0.7;
-  for (let i = 0; i < 32; i++) {
-    const a = (i * Math.PI) / 16;
-    ctx.beginPath();
-    ctx.moveTo(origin.x, origin.y);
-    ctx.lineTo(origin.x + Math.cos(a) * 2400, origin.y + Math.sin(a) * 2400);
-    ctx.stroke();
-  }
-
-  // Soundings, scattered in tiny numerals.
-  const r = seeded(41);
-  ctx.fillStyle = "rgba(62, 84, 88, 0.42)";
-  ctx.font = `10px "IM Fell English", serif`;
-  ctx.textAlign = "center";
-  for (let i = 0; i < 150; i++) {
-    const x = 250 + r() * 900;
-    const y = -160 + r() * 1200;
-    ctx.fillText(String(6 + Math.floor(r() * 90)), x, y);
-  }
-
-  land(ctx, mainland(), 11);
-  const isles: [number, number, number, number, number][] = [
-    [478, 92, 66, 40, 21],
-    [664, 328, 50, 38, 22],
-    [416, 804, 78, 40, 23],
-    [868, 142, 68, 48, 24],
-    [880, 664, 62, 60, 25],
-    [742, 500, 17, 12, 26],
-    [330, 262, 13, 9, 27],
-    [944, 410, 22, 16, 28],
-    [292, 640, 14, 8, 29],
-    [120, -120, 60, 40, 30],
-  ];
-  for (const [x, y, rx, ry, seed] of isles) land(ctx, coast(x, y, rx, ry, seed), seed);
-
-  compass(ctx, origin.x, origin.y, 46);
-
-  // Scale bar.
-  ctx.save();
-  ctx.translate(724, 836);
-  ctx.strokeStyle = "rgba(60, 46, 30, 0.75)";
-  ctx.lineWidth = 1;
-  ctx.fillStyle = "rgba(60, 46, 30, 0.75)";
-  for (let i = 0; i < 4; i++) {
-    if (i % 2 === 0) ctx.fillRect(i * 28, 0, 28, 4);
-    ctx.strokeRect(i * 28, 0, 28, 4);
-  }
-  ctx.font = `italic 11px "IM Fell English", serif`;
-  ctx.textAlign = "left";
-  ctx.fillText("One watch's sailing", 0, 18);
-  ctx.restore();
-
-  // Cartouche.
-  ctx.save();
-  ctx.translate(26, 22);
-  ctx.fillStyle = "rgba(240, 230, 204, 0.86)";
-  ctx.strokeStyle = "#4a3a26";
-  ctx.lineWidth = 1;
-  ctx.fillRect(0, 0, 148, 62);
-  ctx.strokeRect(0, 0, 148, 62);
-  ctx.strokeRect(4, 4, 140, 54);
-  ctx.fillStyle = "#3a2c1c";
-  ctx.textAlign = "center";
-  ctx.font = `13px "IM Fell English SC", serif`;
-  ctx.fillText("A Chart of the", 74, 24);
-  ctx.font = `17px "IM Fell English SC", serif`;
-  ctx.fillText("Merrow Approaches", 74, 44);
-  ctx.restore();
-
-  // Paper grain.
-  const tile = document.createElement("canvas");
-  tile.width = tile.height = 180;
-  const t = tile.getContext("2d")!;
-  const grain = t.createImageData(180, 180);
-  for (let i = 0; i < grain.data.length; i += 4) {
-    const v = 90 + Math.random() * 90;
-    grain.data[i] = grain.data[i + 1] = grain.data[i + 2] = v;
-    grain.data[i + 3] = Math.random() * 15;
-  }
-  t.putImageData(grain, 0, 0);
-  ctx.fillStyle = ctx.createPattern(tile, "repeat")!;
-  ctx.fillRect(-1200, -1200, W + 2400, H + 2400);
-}
-
-function ship(ctx: CanvasRenderingContext2D, x: number, y: number, facing: number, scale: number, ink: string) {
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.scale(facing * scale, scale);
-  ctx.beginPath();
-  ctx.moveTo(-9, 1);
-  ctx.quadraticCurveTo(0, 7, 10, 0);
-  ctx.lineTo(7, 0);
-  ctx.lineTo(-7, 1);
-  ctx.closePath();
-  ctx.fillStyle = ink;
-  ctx.fill();
-  ctx.beginPath();
-  ctx.moveTo(0, 0);
-  ctx.lineTo(0, -13);
-  ctx.moveTo(-5, 0);
-  ctx.lineTo(-5, -10);
-  ctx.strokeStyle = ink;
-  ctx.lineWidth = 0.8;
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(0.6, -12);
-  ctx.quadraticCurveTo(7, -7, 0.6, -2);
-  ctx.closePath();
-  ctx.moveTo(-4.4, -9.5);
-  ctx.quadraticCurveTo(0, -5.5, -4.4, -2);
-  ctx.closePath();
-  ctx.fillStyle = "#f3ead3";
-  ctx.fill();
-  ctx.strokeStyle = ink;
-  ctx.lineWidth = 0.7;
-  ctx.stroke();
-  ctx.restore();
-}
-
-interface Effect {
-  kind: "wreck" | "home";
+interface Wreck {
   x: number;
   y: number;
   born: number;
   mine: boolean;
+  captain: number;
 }
 
 interface Hover {
   x: number;
   y: number;
-  voyage: Voyage;
+  voyage?: Voyage;
+  port?: number;
+  house?: House;
 }
 
 interface Props {
   view: View;
   driver: Driver;
   flash: number;
+  built: string[];
+  /** Screen space kept clear on the left for the dock and at the top for the bar. */
+  inset: { left: number; top: number; bottom: number };
+  level: number;
+  onFit: (fit: Fit) => void;
 }
 
-export default function Chart({ view, driver, flash }: Props) {
+export default function Chart({ view, driver, flash, built, level, inset, onFit }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
-  const latest = useRef(view);
+  const latest = useRef({ view, built, level, inset });
   const flashAt = useRef(0);
   const [hover, setHover] = useState<Hover | null>(null);
-  latest.current = view;
+  latest.current = { view, built, level, inset };
 
   useEffect(() => {
     if (flash) flashAt.current = performance.now();
@@ -341,192 +656,174 @@ export default function Chart({ view, driver, flash }: Props) {
   useEffect(() => {
     const el = canvas.current!;
     const ctx = el.getContext("2d")!;
-    const engraved = document.createElement("canvas");
+    const world = document.createElement("canvas");
     let scale = 1;
     let offsetX = 0;
     let offsetY = 0;
     let dpr = 1;
-    let type = 1;
     let frame = 0;
-    let lastSeq = latest.current.seq;
-    const effects: Effect[] = [];
+    let lastSeq = latest.current.view.seq;
+    let boats = 1;
+    const wrecks: Wreck[] = [];
+    const ripples: { x: number; y: number; born: number }[] = [];
     const lastPlace = new Map<number, Point>();
-    const shipsDrawn: { x: number; y: number; voyage: Voyage }[] = [];
+    const drawn: { x: number; y: number; voyage: Voyage }[] = [];
 
     const resize = () => {
       if (!host.current) return;
       const box = host.current.getBoundingClientRect();
+      const { left, top, bottom } = latest.current.inset;
       dpr = Math.min(window.devicePixelRatio || 1, 2);
       el.width = Math.max(1, Math.round(box.width * dpr));
       el.height = Math.max(1, Math.round(box.height * dpr));
       el.style.width = `${box.width}px`;
       el.style.height = `${box.height}px`;
-      scale = Math.min(box.width / W, box.height / H);
-      offsetX = (box.width - W * scale) / 2;
-      offsetY = (box.height - H * scale) / 2;
-      type = 1 / Math.pow(scale, 0.86);
-      engraved.width = el.width;
-      engraved.height = el.height;
-      const g = engraved.getContext("2d")!;
+      const roomW = box.width - left;
+      const roomH = box.height - top - bottom;
+      scale = Math.min(roomW / W, roomH / H);
+      offsetX = left + (roomW - W * scale) / 2;
+      offsetY = top + (roomH - H * scale) / 2;
+      boats = Math.max(0.22, 0.19 / Math.pow(scale, 0.6));
+      world.width = el.width;
+      world.height = el.height;
+      const g = world.getContext("2d")!;
       g.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * offsetX, dpr * offsetY);
-      paintChart(g);
+      paintWorld(g);
+      onFit({ scale, x: offsetX, y: offsetY });
     };
 
     const observer = new ResizeObserver(resize);
     observer.observe(host.current!);
     resize();
-    // Fonts arrive after first paint; engrave again with the real type.
     void document.fonts?.ready.then(resize);
 
     const render = (now: number) => {
       frame = requestAnimationFrame(render);
-      const v = latest.current;
+      const { view: v, built: decor, level: rank } = latest.current;
+      const t = now / 1000;
       const length = driver.watchLength() || v.watch_ms;
       const running = driver.watchLength() > 0;
       const into = running ? Math.min(1, (now - driver.watchStartedAt()) / length) : 0;
       const clock = v.watch + into;
       const you = v.houses.find((h) => h.you);
-      const mine = new Set(
-        v.positions.filter((p) => you && p.writer === you.id).map((p) => p.voyage),
-      );
+      const mine = new Set(v.positions.filter((p) => you && p.writer === you.id).map((p) => p.voyage));
 
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.drawImage(engraved, 0, 0, el.width / dpr, el.height / dpr);
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.drawImage(world, 0, 0);
       ctx.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * offsetX, dpr * offsetY);
 
-      // Lanes, drawn rougher as the sea rises.
+      // Sea routes.
       v.lanes.forEach((lane) => {
         ctx.beginPath();
-        for (let i = 0; i <= 44; i++) {
-          const p = curve(lane.id, i / 44);
+        for (let i = 0; i <= 40; i++) {
+          const p = curve(lane.id, i / 40);
           if (i) ctx.lineTo(p.x, p.y);
           else ctx.moveTo(p.x, p.y);
         }
-        ctx.setLineDash([2, 7]);
-        ctx.lineWidth = 1.1;
-        ctx.strokeStyle = "rgba(52, 40, 26, 0.5)";
+        ctx.setLineDash([3, 11]);
+        ctx.lineCap = "round";
+        ctx.lineWidth = 3.4;
+        ctx.strokeStyle = v.storms.some((s) => s.lanes.includes(lane.id)) ? "rgba(235,70,60,0.95)" : "rgba(255,255,255,0.85)";
         ctx.stroke();
         ctx.setLineDash([]);
-
-        const marks = Math.floor(lane.sea / 11);
-        ctx.strokeStyle = lane.sea >= 60 ? "rgba(58, 63, 99, 0.62)" : "rgba(62, 104, 108, 0.46)";
-        ctx.lineWidth = 1;
+        // Bigger waves when the sea is rough.
+        const marks = Math.floor(lane.sea / 16);
+        ctx.strokeStyle = "rgba(255,255,255,0.75)";
+        ctx.lineWidth = 2.2;
         for (let i = 0; i < marks; i++) {
-          const t = 0.12 + (0.76 * (i + 0.5)) / marks;
-          const p = curve(lane.id, t, i % 2 ? 9 : -9);
-          const lift = Math.sin(now / 520 + i * 1.7) * 1.6;
+          const u = 0.14 + (0.72 * (i + 0.5)) / marks;
+          const p = curve(lane.id, u, i % 2 ? 15 : -15);
+          const lift = Math.sin(t * 1.7 + i * 1.6) * 2.2;
           ctx.beginPath();
-          ctx.moveTo(p.x - 7, p.y + lift);
-          ctx.quadraticCurveTo(p.x - 3.5, p.y - 4 + lift, p.x, p.y + lift);
-          ctx.quadraticCurveTo(p.x + 3.5, p.y + 4 + lift, p.x + 7, p.y + lift);
+          ctx.moveTo(p.x - 9, p.y + lift);
+          ctx.quadraticCurveTo(p.x - 4.5, p.y - 6 + lift, p.x, p.y + lift);
+          ctx.quadraticCurveTo(p.x + 4.5, p.y - 6 + lift, p.x + 9, p.y + lift);
           ctx.stroke();
         }
-
-        const label = curve(lane.id, 0.44, -17);
-        ctx.save();
-        ctx.translate(label.x, label.y);
-        const tilt = Math.atan2(label.dy, label.dx);
-        ctx.rotate(tilt > Math.PI / 2 || tilt < -Math.PI / 2 ? tilt + Math.PI : tilt);
-        ctx.font = `italic ${13.5 * type}px "IM Fell English", serif`;
-        ctx.textAlign = "center";
-        ctx.fillStyle = "rgba(46, 35, 22, 0.86)";
-        ctx.fillText(`${lane.name}, ${seaWord(lane.sea).toLowerCase()}`, 0, 0);
-        ctx.restore();
       });
 
-      // Ports.
-      v.ports.forEach((port, i) => {
-        const [x, y] = PORTS[i];
+      // Merrow's shops. A failed rival's shop closes for everyone to see.
+      const rivals = v.houses.filter((h) => !h.you).slice(0, SHOPS.length);
+      rivals.forEach((h, i) => {
+        const [x, y] = SHOPS[i];
+        shop(ctx, x, y, 0.9, AWNINGS[i % AWNINGS.length], !h.active, false);
+      });
+      // Your shop grows with you.
+      shop(ctx, YOUR_SHOP[0], YOUR_SHOP[1], 1.14 + Math.min(rank, 8) * 0.06, YOUR_AWNING, you ? !you.active : false, true);
+      decorations(ctx, decor, t);
+
+      // Volcano smoke.
+      for (let i = 0; i < 4; i++) {
+        const life = (t * 0.32 + i * 0.25) % 1;
         ctx.beginPath();
-        ctx.arc(x, y, i === 0 ? 6 : 4.5, 0, Math.PI * 2);
-        ctx.fillStyle = "#8c2b20";
+        ctx.arc(418 + Math.sin(life * 5 + i) * 7, 758 - life * 58, 5 + life * 11, 0, TAU);
+        ctx.fillStyle = `rgba(120,110,105,${0.5 * (1 - life)})`;
         ctx.fill();
-        ctx.strokeStyle = "#f2e7cf";
-        ctx.lineWidth = 1.4;
-        ctx.stroke();
-        ctx.font = `${(i === 0 ? 21 : 17) * type}px "IM Fell English SC", serif`;
-        ctx.textAlign = i === 0 ? "right" : "center";
-        const tx = i === 0 ? x - 12 : x;
-        const ty = i === 0 ? y + 6 : y - 11;
-        ctx.lineWidth = 3;
-        ctx.strokeStyle = "rgba(240, 230, 204, 0.72)";
-        ctx.strokeText(port.name, tx, ty);
-        ctx.fillStyle = "#2e2316";
-        ctx.fillText(port.name, tx, ty);
+      }
+
+      // Ships.
+      drawn.length = 0;
+      v.voyages.forEach((voyage) => {
+        const span = Math.max(1, voyage.arrives - voyage.sailed);
+        const progress = Math.min(1, Math.max(0, (clock - voyage.sailed) / span));
+        const u = voyage.outbound ? progress : 1 - progress;
+        const p = curve(voyage.lane, u, voyage.outbound ? 8 : -8);
+        const facing = (voyage.outbound ? p.dx : -p.dx) >= 0 ? 1 : -1;
+        const isMine = mine.has(voyage.id);
+        const bob = Math.sin(t * 2.2 + voyage.id) * 1.8;
+        lastPlace.set(voyage.id, { x: p.x, y: p.y });
+
+        // Wake.
+        ctx.strokeStyle = "rgba(255,255,255,0.75)";
+        ctx.lineWidth = 2.4;
+        for (let i = 1; i <= 3; i++) {
+          ctx.beginPath();
+          ctx.arc(p.x - facing * (14 + i * 9), p.y + 6, 2.5 + i, 0, Math.PI);
+          ctx.stroke();
+        }
+        if (isMine) {
+          ctx.beginPath();
+          ctx.arc(p.x, p.y - 12, 34 + Math.sin(t * 4) * 2, 0, TAU);
+          ctx.fillStyle = "rgba(255,210,63,0.34)";
+          ctx.fill();
+          ctx.lineWidth = 3.5;
+          ctx.strokeStyle = "#ffc531";
+          ctx.stroke();
+        }
+        const [sail, stripe] = SAILS[voyage.captain % SAILS.length];
+        drawShip(ctx, {
+          x: p.x,
+          y: p.y + 6 + bob,
+          angle: Math.sin(t * 1.7 + voyage.id) * 0.05,
+          scale: boats * (isMine ? 1.35 : 1.08),
+          facing,
+          sail,
+          stripe,
+          t: t + voyage.id,
+        });
+        drawn.push({ x: p.x, y: p.y - 10, voyage });
       });
 
       // Weather.
       v.storms.forEach((storm) => {
         const active = storm.starts <= v.watch && v.watch < storm.ends;
-        const eta = storm.starts - v.watch;
+        const eta = storm.starts - clock;
         storm.lanes.forEach((lane, index) => {
-          const c = curve(lane, 0.5 + 0.12 * Math.sin(storm.id + index), 0);
-          const radius = storm.great ? 74 : 46;
-          ctx.save();
-          ctx.translate(c.x, c.y);
-          if (active) {
-            const wash = ctx.createRadialGradient(0, 0, 6, 0, 0, radius * 1.15);
-            wash.addColorStop(0, "rgba(34, 36, 66, 0.72)");
-            wash.addColorStop(0.65, "rgba(44, 48, 84, 0.42)");
-            wash.addColorStop(1, "rgba(44, 48, 84, 0)");
-            ctx.fillStyle = wash;
-            ctx.beginPath();
-            ctx.arc(0, 0, radius * 1.15, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.rotate(now / 900);
-            ctx.strokeStyle = "rgba(240, 236, 224, 0.42)";
-            ctx.lineWidth = 1.4;
-            for (let arm = 0; arm < 4; arm++) {
-              ctx.rotate(Math.PI / 2);
-              ctx.beginPath();
-              for (let s = 0; s < 34; s++) {
-                const a = s * 0.16;
-                const d = 5 + s * (radius / 40);
-                if (s) ctx.lineTo(Math.cos(a) * d, Math.sin(a) * d);
-                else ctx.moveTo(Math.cos(a) * d, Math.sin(a) * d);
-              }
-              ctx.stroke();
-            }
-          } else {
-            const pulse = 0.5 + 0.28 * Math.sin(now / 340);
-            ctx.setLineDash([6, 6]);
-            ctx.lineWidth = 1.6;
-            ctx.strokeStyle = `rgba(58, 63, 99, ${pulse})`;
-            ctx.beginPath();
-            ctx.arc(0, 0, radius, 0, Math.PI * 2);
-            ctx.stroke();
-            ctx.setLineDash([]);
-            ctx.fillStyle = "#2e2c52";
-            ctx.font = `italic ${14 * type}px "IM Fell English", serif`;
+          const c = curve(lane, 0.5 + 0.14 * Math.sin(storm.id + index));
+          const sway = Math.sin(t * 0.5 + index) * 10;
+          stormCloud(ctx, c.x + sway, c.y - 16, (storm.great ? 1.45 : 1) * (active ? 1 : 0.86), t + index, active);
+          if (!active) {
+            const seconds = Math.max(1, Math.ceil((eta * (driver.watchLength() || v.watch_ms)) / 1000));
+            ctx.font = `700 16px "Fredoka", sans-serif`;
             ctx.textAlign = "center";
-            ctx.fillText(eta === 1 ? "next watch" : `in ${eta} watches`, 0, 4);
+            ctx.lineWidth = 5;
+            ctx.strokeStyle = "#fff";
+            ctx.lineJoin = "round";
+            ctx.strokeText(`Storm in ${seconds}s`, c.x + sway, c.y + 34);
+            ctx.fillStyle = "#d13a2e";
+            ctx.fillText(`Storm in ${seconds}s`, c.x + sway, c.y + 34);
           }
-          ctx.restore();
         });
-      });
-
-      // Ships.
-      shipsDrawn.length = 0;
-      v.voyages.forEach((voyage) => {
-        const span = Math.max(1, voyage.arrives - voyage.sailed);
-        const progress = Math.min(1, Math.max(0, (clock - voyage.sailed) / span));
-        const t = voyage.outbound ? progress : 1 - progress;
-        const p = curve(voyage.lane, t, voyage.outbound ? 7 : -7);
-        const facing = (voyage.outbound ? p.dx : -p.dx) >= 0 ? 1 : -1;
-        const isMine = mine.has(voyage.id);
-        const bob = Math.sin(now / 460 + voyage.id) * 1.2;
-        lastPlace.set(voyage.id, { x: p.x, y: p.y });
-        if (isMine) {
-          ctx.beginPath();
-          ctx.arc(p.x, p.y - 4, 17, 0, Math.PI * 2);
-          ctx.fillStyle = "rgba(164, 124, 44, 0.2)";
-          ctx.fill();
-          ctx.strokeStyle = "#a47c2c";
-          ctx.lineWidth = 1.5;
-          ctx.stroke();
-        }
-        ship(ctx, p.x, p.y + bob, facing, (isMine ? 1.3 : 1.08) * Math.sqrt(type), voyage.covered_bps === 0 ? "#6f604c" : "#2a2014");
-        shipsDrawn.push({ x: p.x, y: p.y, voyage });
       });
 
       // News from this watch.
@@ -534,103 +831,150 @@ export default function Chart({ view, driver, flash }: Props) {
         for (const e of v.events) {
           if (e.seq <= lastSeq) continue;
           if (e.type === "wrecked") {
-            const place = lastPlace.get(e.voyage);
-            if (place) {
-              effects.push({ kind: "wreck", x: place.x, y: place.y, born: now, mine: mine.has(e.voyage) || false });
-            }
+            const spot = lastPlace.get(e.voyage);
+            if (spot) wrecks.push({ ...spot, born: now, mine: mine.has(e.voyage), captain: e.captain });
           } else if (e.type === "home") {
             const [x, y] = PORTS[e.port];
-            effects.push({ kind: "home", x, y, born: now, mine: false });
+            ripples.push({ x, y, born: now });
           }
         }
         lastSeq = v.seq;
       }
-      for (let i = effects.length - 1; i >= 0; i--) {
-        const fx = effects[i];
-        const age = (now - fx.born) / 1000;
-        if (age > (fx.kind === "wreck" ? 12 : 1.6)) {
-          effects.splice(i, 1);
+      for (let i = ripples.length - 1; i >= 0; i--) {
+        const age = (now - ripples[i].born) / 1000;
+        if (age > 1.2) {
+          ripples.splice(i, 1);
           continue;
         }
-        if (fx.kind === "home") {
+        ctx.beginPath();
+        ctx.arc(ripples[i].x, ripples[i].y, 8 + age * 30, 0, TAU);
+        ctx.strokeStyle = `rgba(255,255,255,${0.9 * (1 - age / 1.2)})`;
+        ctx.lineWidth = 3;
+        ctx.stroke();
+      }
+      // Wrecks stay on the map for a while, slowly going under.
+      for (let i = wrecks.length - 1; i >= 0; i--) {
+        const fx = wrecks[i];
+        const age = (now - fx.born) / 1000;
+        if (age > 14) {
+          wrecks.splice(i, 1);
+          continue;
+        }
+        const fade = Math.min(1, (14 - age) / 2);
+        const [sail, stripe] = SAILS[fx.captain % SAILS.length];
+        ctx.save();
+        ctx.globalAlpha = fade;
+        ctx.beginPath();
+        ctx.rect(fx.x - 50, fx.y - 70, 100, 76 - Math.min(26, age * 3));
+        ctx.clip();
+        drawShip(ctx, {
+          x: fx.x,
+          y: fx.y + 8 + Math.min(18, age * 3.5),
+          angle: 0.6,
+          scale: boats * 1.1,
+          sail,
+          stripe,
+          t,
+          damage: 1,
+        });
+        ctx.restore();
+        ctx.globalAlpha = fade;
+        for (let r = 0; r < 2; r++) {
+          const a = (age * 0.5 + r * 0.5) % 1;
           ctx.beginPath();
-          ctx.arc(fx.x, fx.y, 6 + age * 26, 0, Math.PI * 2);
-          ctx.strokeStyle = `rgba(47, 107, 94, ${0.7 * (1 - age / 1.6)})`;
-          ctx.lineWidth = 2;
-          ctx.stroke();
-        } else {
-          const fade = Math.min(1, (12 - age) / 3);
-          for (let ring = 0; ring < 3; ring++) {
-            const a = (age * 0.6 + ring * 0.33) % 1;
-            ctx.beginPath();
-            ctx.arc(fx.x, fx.y, 4 + a * 34, 0, Math.PI * 2);
-            ctx.strokeStyle = `rgba(140, 43, 32, ${(1 - a) * 0.75 * fade})`;
-            ctx.lineWidth = 1.5;
-            ctx.stroke();
-          }
-          ctx.strokeStyle = `rgba(140, 43, 32, ${fade})`;
-          ctx.lineWidth = 3;
-          ctx.beginPath();
-          ctx.moveTo(fx.x - 8, fx.y - 8);
-          ctx.lineTo(fx.x + 8, fx.y + 8);
-          ctx.moveTo(fx.x + 8, fx.y - 8);
-          ctx.lineTo(fx.x - 8, fx.y + 8);
+          ctx.ellipse(fx.x, fx.y + 8, 14 + a * 26, 5 + a * 9, 0, 0, TAU);
+          ctx.strokeStyle = `rgba(255,255,255,${(1 - a) * 0.9})`;
+          ctx.lineWidth = 2.6;
           ctx.stroke();
         }
+        for (let b = 0; b < 5; b++) {
+          const life = (t * 0.8 + b * 0.21) % 1;
+          ctx.beginPath();
+          ctx.arc(fx.x - 12 + b * 6, fx.y + 2 - life * 26, 2 + (b % 3), 0, TAU);
+          ctx.fillStyle = "rgba(255,255,255,0.85)";
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
       }
 
-      // Lightning, when the storm breaks.
       const sinceFlash = now - flashAt.current;
-      if (sinceFlash < 420) {
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        ctx.fillStyle = `rgba(250, 248, 240, ${0.5 * (1 - sinceFlash / 420)})`;
+      if (sinceFlash < 380) {
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.fillStyle = `rgba(255,255,235,${0.55 * (1 - sinceFlash / 380)})`;
         ctx.fillRect(0, 0, el.width, el.height);
       }
     };
     frame = requestAnimationFrame(render);
 
-    const move = (event: MouseEvent) => {
+    const point = (event: MouseEvent) => {
       const box = el.getBoundingClientRect();
-      const x = (event.clientX - box.left - offsetX) / scale;
-      const y = (event.clientY - box.top - offsetY) / scale;
-      const near = shipsDrawn.find((s) => Math.hypot(s.x - x, s.y - y) < 20);
-      setHover(
-        near
-          ? { x: event.clientX - box.left, y: event.clientY - box.top, voyage: near.voyage }
-          : null,
-      );
+      const sx = event.clientX - box.left;
+      const sy = event.clientY - box.top;
+      const x = (sx - offsetX) / scale;
+      const y = (sy - offsetY) / scale;
+      const ship = drawn.find((s) => Math.hypot(s.x - x, s.y - y) < 28);
+      if (ship) return setHover({ x: sx, y: sy, voyage: ship.voyage });
+      const port = PORTS.findIndex(([px, py]) => Math.hypot(px - x, py - y) < 58);
+      if (port >= 0) return setHover({ x: sx, y: sy, port });
+      const v = latest.current.view;
+      const rivals = v.houses.filter((h) => !h.you).slice(0, SHOPS.length);
+      const near = SHOPS.findIndex(([px, py], i) => rivals[i] && Math.hypot(px - x, py - 18 - y) < 28);
+      if (near >= 0) return setHover({ x: sx, y: sy, house: rivals[near] });
+      return setHover(null);
     };
     const leave = () => setHover(null);
-    el.addEventListener("mousemove", move);
+    el.addEventListener("mousemove", point);
+    el.addEventListener("click", point);
     el.addEventListener("mouseleave", leave);
 
     return () => {
       cancelAnimationFrame(frame);
       observer.disconnect();
-      el.removeEventListener("mousemove", move);
+      el.removeEventListener("mousemove", point);
+      el.removeEventListener("click", point);
       el.removeEventListener("mouseleave", leave);
     };
-  }, [driver]);
+  }, [driver, onFit]);
 
-  const captain = hover ? view.captains[hover.voyage.captain] : null;
   const you = view.houses.find((h) => h.you);
-  const atRisk = hover
+  const atRisk = hover?.voyage
     ? view.positions
-        .filter((p) => you && p.writer === you.id && p.voyage === hover.voyage.id)
+        .filter((p) => you && p.writer === you.id && p.voyage === hover.voyage?.id)
         .reduce((sum, p) => sum + p.sum - p.ceded, 0)
     : 0;
+  const portInfo = hover?.port !== undefined ? view.ports[hover.port] : null;
+  const home = view.ports[0];
 
   return (
     <div className="chart" ref={host}>
-      <canvas ref={canvas} aria-label="Sea chart showing ships, lanes and storms" role="img" />
-      {hover && captain && (
-        <div className="tip chart-tip" style={{ left: hover.x + 14, top: hover.y + 10 }}>
-          <strong>{captain.ship}</strong>
-          <span>{captain.name}</span>
+      <canvas ref={canvas} aria-label="Map of the harbor with ships, islands and storms" role="img" />
+      {hover?.voyage && (
+        <div className="tip" style={{ left: hover.x + 14, top: hover.y + 10 }}>
+          <Character id={hover.voyage.captain} size={52} mood={atRisk ? "cheer" : "happy"} />
           <span>
-            {hover.voyage.qty > 0 ? `${hover.voyage.qty} ${hover.voyage.good_name}` : "In ballast"}, {Math.round(hover.voyage.covered_bps / 100)}% covered
+            <b>{fullName(hover.voyage.captain)}</b>
+            <span>{hover.voyage.qty > 0 ? `Carrying ${cargo(hover.voyage.qty, hover.voyage.good_name)}` : "Sailing empty"}</span>
+            {atRisk > 0 && <span className="tip-mine">You protect this ship</span>}
           </span>
-          {atRisk > 0 && <span>You stand to lose {crowns(atRisk)}</span>}
+        </div>
+      )}
+      {portInfo && (
+        <div className="tip" style={{ left: hover!.x + 14, top: hover!.y + 10 }}>
+          <span>
+            <b>{place(portInfo.name)}</b>
+            <span>Makes {portInfo.makes}.</span>
+            {hover!.port !== 0 && (
+              <span>Merrow pays {home.goods.find((g) => g.name === portInfo.makes)?.price ?? 0} coins each for it.</span>
+            )}
+          </span>
+        </div>
+      )}
+      {hover?.house && (
+        <div className="tip" style={{ left: hover.x + 14, top: hover.y + 10 }}>
+          <span>
+            <b>{shopName(hover.house.name)}</b>
+            <span>{hover.house.active ? `${crowns(hover.house.capital)} coins` : "Closed for good"}</span>
+          </span>
         </div>
       )}
     </div>

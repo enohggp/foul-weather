@@ -148,10 +148,10 @@ export function eventLine(e: GameEvent, view: View): Line | null {
 }
 
 export function titleFor(capital: number) {
-  if (capital <= 0) return "Struck off";
-  if (capital < 4000) return "Clerk of a Small Desk";
-  if (capital < 7000) return "Respectable Underwriter";
-  if (capital < 11000) return "Name of the Room";
-  if (capital < 16000) return "Pillar of the Exchange";
-  return "Chairman of the Room";
+  if (capital <= 0) return "Shop closed";
+  if (capital < 4000) return "Little Shop";
+  if (capital < 7000) return "Busy Shop";
+  if (capital < 11000) return "Famous Shop";
+  if (capital < 16000) return "Harbor Hero";
+  return "Harbor Champion";
 }

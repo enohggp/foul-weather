@@ -32,36 +32,36 @@ These you need to fill in yourself: team lead's name, contact email, team size, 
 
 ### What they built
 
-> Most game economies are a price table with a shop on top. Foul Weather makes risk the thing you trade. You run a marine insurance house: captains with their own wallets ask for cover, you price the voyage, and you hear a bell when the ship comes home or doesn't. Your prices decide who can afford to sail, which decides what reaches port, which decides what captains can pay you. In one great storm, houses that all passed their risk on to each other fall in a chain.
+> Most game economies are a price table with a shop on top. Foul Weather makes risk the thing you trade, and it's simple enough for a child. You run a little harbor shop: animal captains with their own wallets ask you to protect their ships, you say yes or no, and you hear a bell when the ship comes home or sinks. A parrot teaches one idea at a time, and each level adds a skill. Underneath is a real insurance market. Your prices decide who can afford to sail, which decides what reaches port, which decides what captains can pay you. In one great storm, shops that all passed their risk on to each other fall in a chain.
 >
 > NEAR runs the whole game with no server. One contract holds the rules and every token as NEP-245, including insurance policies you can sell. Anyone can move the world on with a public tick, at 4 to 6 Tgas a watch. Captains' wallets are sub-accounts with no key at all, so only the rules can move their money. Claims clear with an Eisenberg-Noe algorithm on-chain. Hidden facts, like a hull's condition, are not stored: they're drawn from block randomness the moment someone looks. Live NEAR Intents quotes set the roughness of the sea, so real markets change the game with no patch. Players start with a guest account or NEAR Auth, and never see a wallet, seed phrase or gas prompt. A public front-door key, limited by NEAR to one method, opens accounts without a server. Any AI agent can run a house through the public methods, and an example agent can use NEAR AI Cloud.
 >
-> The same Rust rules compile to the contract and to the browser, so practice mode and the week-in-a-minute fast-forward run the contract's real rules. In 900 bot-played seasons, signing everything failed more than half the time, while careful underwriting more than doubled the money.
+> The same Rust rules compile to the contract and to the browser, so practice mode and the week-in-a-minute fast-forward run the contract's real rules. In 900 bot-played seasons, signing everything failed more than half the time, while careful play more than doubled the money.
 
 ## Demo video
 
-A captioned, two-minute recording of the real game is at [`docs/demo/foul-weather-demo.mp4`](demo/foul-weather-demo.mp4). It has no sound, so the bells are missing. You can post it as it is, but your own voice and the bells would be better. A shorter script for that:
+A captioned recording of Pip playing the real game is at [`docs/demo/foul-weather-demo.mp4`](demo/foul-weather-demo.mp4). It has no sound, so the bells are missing. You can post it as it is, but your own voice and the bells would be better. A shorter script for that:
 
 | Time | Show | Say |
 | --- | --- | --- |
-| 0:00 | The title screen | "Most game economies are shops. In this one, you don't trade the goods. You carry the risk." |
-| 0:08 | Open a slip, press **Why?** | "This captain has their own wallet. They'll pay out of what the voyage should earn. Is that enough for this crossing?" |
-| 0:20 | **Survey**, then sign | "The hull's real state didn't exist until I paid to look. On a public chain, that's the only way to keep a secret." |
-| 0:32 | The ship crosses, then the bell | "Two bells: safe home. One bell: I'm paying." |
-| 0:42 | `?demo=spiral` at the storm | "Here's what happens when everyone has passed risk to everyone else." |
-| 0:55 | The Room's network as houses die, then the list | "One storm, five houses. Each one failed because the last one couldn't pay." |
-| 1:08 | **Under the hood**: the live contract and a transaction | "There's no server. The contract runs the world, captains' wallets have no keys, and live NEAR Intents prices set the sea." |
+| 0:00 | The title screen | "Most game economies are shops. In this one, you don't trade the goods. You carry the risk. And a child can play it." |
+| 0:08 | Pip's first lesson, a captain's card | "This otter has a real wallet. Green is what she pays me. Red is what I pay if she sinks. This meter says if it's worth it." |
+| 0:20 | Tap yes, coins fly | "Yes. I'm paid straight away, and my ship gets a gold ring." |
+| 0:30 | The ship comes home, or the shipwreck scene | "Two bells: safe home. One bell: I'm paying." |
+| 0:42 | `?demo=spiral` at the storm | "Here's what happens when every shop has passed its risk on to another shop." |
+| 0:55 | Shops toppling, then the list | "One storm, five shops. Each one failed because the last one couldn't pay." |
+| 1:08 | **For grown-ups**: the live contract and a transaction | "There's no server. The contract runs the world, captains' wallets have no keys, and live NEAR Intents prices set the sea." |
 | 1:18 | The game running | "It's live on testnet. Link below." |
 
 ## Demo post for X
 
-> In most games, the economy is a shop. I built one where you don't trade goods, you insure them.
+> In most games, the economy is a shop. I built one where you don't trade goods, you protect them, and a child can play it.
 >
-> Price a captain's voyage. Hear the bell. Then watch one storm take down five insurers, each failing because the last one couldn't pay.
+> Say yes to an animal captain. Hear the bell. Then watch one storm take down five shops, each failing because the last one couldn't pay.
 >
 > No server: on NEAR, captains' wallets have no keys, so only the rules can move their money, and live NEAR Intents prices set the sea.
 >
-> Built at NEAR HACKATHON. Would you sign this slip?
+> Built at NEAR HACKATHON. Would you protect this ship?
 >
 > [link to game] [link to repo]
 >
@@ -71,6 +71,6 @@ A captioned, two-minute recording of the real game is at [`docs/demo/foul-weathe
 
 `.github/workflows/pages.yml` publishes the game to GitHub Pages on every push to `main`. Set **Settings > Pages > Source** to **GitHub Actions** once. The hackathon asks that a hosted demo stays up until at least 18 November, and ideally 25 November.
 
-The hosted page plays practice mode and the live Room as a guest with no setup. Google and email sign-in needs a client id from NEAR Auth, in `VITE_FW_AUTH_CLIENT_ID`.
+The hosted page plays practice mode and the live town as a guest with no setup. Google and email sign-in needs a client id from NEAR Auth, in `VITE_FW_AUTH_CLIENT_ID`.
 
 `.github/workflows/keeper.yml` keeps the live world moving while no one is playing. It needs one repository secret, `NEAR_PRIVATE_KEY`.

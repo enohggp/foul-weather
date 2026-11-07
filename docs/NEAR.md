@@ -1,5 +1,7 @@
 # How Foul Weather uses NEAR
 
+The game shows friendly names: shops, coins and animal captains. The contract and this document keep the original ones: houses in the Room, crowns, and named captains.
+
 The chain does work here that a game server could not be trusted to do. A player never sees any of it.
 
 ## No server

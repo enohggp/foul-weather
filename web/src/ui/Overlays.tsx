@@ -1,10 +1,14 @@
-// Screens that sit over the game: the title, reports and the clerk's notes.
+// Screens that sit over the game: the start, reports and celebrations.
 
 import { useEffect, useRef, useState } from "react";
+import { shopName } from "../cast";
+import { runTour } from "../tour";
 import type { House, View } from "../types";
 import { crowns, pct, titleFor } from "../words";
-import { runTour } from "../tour";
-import { LineChart, Seal } from "./bits";
+import { Character, Coin, Pip, ShopIcon, Star } from "./art";
+import { LineChart } from "./bits";
+import { shopColour } from "./Hud";
+import { TitleSea } from "./Theatre";
 
 export interface TitleChoice {
   mode: "practice" | "live" | "login";
@@ -35,92 +39,86 @@ export function Title({
   });
   const input = useRef<HTMLInputElement>(null);
   useEffect(() => input.current?.focus(), []);
-  const valid = name.trim().length >= 2;
   const go = (mode: TitleChoice["mode"]) => {
-    if (!valid) {
-      input.current?.focus();
-      return;
-    }
+    const chosen = name.trim().length >= 2 ? name.trim() : "My Harbor Shop";
     try {
       localStorage.setItem("fw-house", name.trim());
     } catch {
       // A private window may refuse storage. The name just won't be remembered.
     }
-    onStart({ mode, name: name.trim() });
+    onStart({ mode, name: chosen });
   };
   return (
     <main className="title">
+      <TitleSea />
       <div className="title-card">
-        <p className="kicker">Marine underwriters of Merrow</p>
+        <div className="title-pip">
+          <Pip size={116} />
+          <p className="bubble">Ahoy! Ready to run your own harbor shop?</p>
+        </div>
         <h1>Foul Weather</h1>
-        <p className="tag">You don't trade the goods. You carry the risk.</p>
-        <p className="lede">
-          Captains need cover before they sail. Price it well and you grow rich on other people's courage. Price it
-          badly, and one storm takes the house.
-        </p>
+        <ol className="steps">
+          <li>
+            <Character id={0} size={58} />
+            <span>Captains ask you to protect their ships</span>
+          </li>
+          <li>
+            <span className="step-icon">
+              <Coin size={44} />
+            </span>
+            <span>They pay you coins</span>
+          </li>
+          <li>
+            <span className="step-icon">
+              <Star size={46} />
+            </span>
+            <span>Bring ships home and grow your harbor</span>
+          </li>
+        </ol>
         <form
           onSubmit={(e) => {
             e.preventDefault();
             go("practice");
           }}
         >
-          <label htmlFor="house">Name your house</label>
+          <label htmlFor="house">Name your shop</label>
           <input
             id="house"
             ref={input}
             value={name}
             maxLength={32}
-            placeholder="Quill & Daughters"
+            placeholder="My Harbor Shop"
             onChange={(e) => setName(e.target.value)}
             autoComplete="off"
           />
-          <button className="primary" type="submit" disabled={!ready || !!working}>
-            Open for business
+          <button className="big-button" type="submit" disabled={!ready || !!working}>
+            Play!
           </button>
-          <button
-            className="secondary"
-            type="button"
-            disabled={!ready || !liveReady || !!working}
-            onClick={() => go("live")}
-          >
-            Join the live Room
-          </button>
+          <div className="title-more">
+            <button className="soft-button" type="button" disabled={!ready || !liveReady || !!working} onClick={() => go("live")}>
+              Play with others
+            </button>
+            <button className="soft-button" type="button" disabled={!ready} onClick={() => void runTour()}>
+              Watch Pip play
+            </button>
+          </div>
           {loginReady && (
-            <button className="link" type="button" disabled={!ready || !!working} onClick={() => go("login")}>
-              Sign in with Google or email to keep your house
+            <button className="text-link" type="button" disabled={!ready || !!working} onClick={() => go("login")}>
+              Sign in with Google or email to save your shop
             </button>
           )}
         </form>
-        <button className="link tour-link" type="button" disabled={!ready} onClick={() => void runTour()}>
-          ▶ Take the guided tour, 3 minutes with voice
-        </button>
-        {working && <p className="muted small">{working}</p>}
-        {error && <p className="warn">{error}</p>}
-        <p className="muted small fine">
-          No wallet, no sign-up, no real money. Crowns are game points with no cash value.
-        </p>
+        {working && <p className="working">{working}</p>}
+        {error && <p className="problem">{error}</p>}
+        <p className="fine">No wallet, no sign-up and no real money. Coins are just for fun.</p>
       </div>
     </main>
   );
 }
 
-export function Notes({ note, onDismiss }: { note: { title: string; body: string } | null; onDismiss: () => void }) {
-  if (!note) return null;
-  return (
-    <aside className="note" role="status">
-      <p className="note-from">Your clerk writes</p>
-      <h3>{note.title}</h3>
-      <p>{note.body}</p>
-      <button className="link" onClick={onDismiss}>
-        Understood
-      </button>
-    </aside>
-  );
-}
-
 export interface Toast {
   id: number;
-  kind: "safe" | "lost" | "bound" | "paid" | "plain";
+  kind: "good" | "bad" | "plain";
   title: string;
   sub?: string;
 }
@@ -138,11 +136,6 @@ export function Toasts({ toasts }: { toasts: Toast[] }) {
   );
 }
 
-function rankOf(view: View, you: House | undefined) {
-  const live = [...view.houses].filter((h) => h.active).sort((a, b) => b.capital - a.capital);
-  return you ? live.findIndex((h) => h.id === you.id) + 1 : 0;
-}
-
 export function Report({
   view,
   you,
@@ -154,85 +147,69 @@ export function Report({
   onNext: () => void;
   practice: boolean;
 }) {
-  const capital = you?.active ? you.capital : 0;
-  const ranked = [...view.houses].sort((a, b) => Number(b.active) - Number(a.active) || b.capital - a.capital);
-  const failed = view.houses.filter((h) => !h.active).length;
+  const open = [...view.houses].filter((h) => h.active).sort((a, b) => b.capital - a.capital);
+  const rank = you ? open.findIndex((h) => h.id === you.id) + 1 : 0;
+  const closed = view.houses.filter((h) => !h.active).length;
+  const podium = open.slice(0, 3);
+  const heights = [120, 88, 66];
   return (
-    <div className="modal-back" role="dialog" aria-modal="true" aria-label="Season report">
-      <div className="modal">
-        <p className="kicker">Season {view.season} closes</p>
-        <h2>{titleFor(capital)}</h2>
-        {you && (
-          <p className="lede">
-            {you.name} ends the season with <b>{crowns(capital)} crowns</b>
-            {you.active ? `, ranked ${rankOf(view, you)} of ${view.houses.filter((h) => h.active).length} houses still standing` : ""}.
-          </p>
-        )}
-        <div className="kpis three">
-          <div>
-            <span className="label">Premiums</span>
-            <strong>{crowns(you?.premiums ?? 0)}</strong>
-          </div>
-          <div>
-            <span className="label">Claims paid</span>
-            <strong>{crowns(you?.claims ?? 0)}</strong>
-          </div>
-          <div>
-            <span className="label">Houses lost</span>
-            <strong>{failed}</strong>
-          </div>
+    <div className="modal-back" role="dialog" aria-modal="true" aria-label="Harbor Festival">
+      <div className="modal center">
+        <h2>The Harbor Festival!</h2>
+        <p className="lede">
+          {you?.active
+            ? rank === 1
+              ? "You are the best shop in the harbor!"
+              : `Your shop came number ${rank} of ${open.length}.`
+            : "Your shop closed this time. There is always next season!"}
+        </p>
+        <div className="podium" aria-label="The top three shops">
+          {[podium[1], podium[0], podium[2]].map((h, i) =>
+            h ? (
+              <div key={h.id} className={`step${h.you ? " you" : ""}`}>
+                <ShopIcon colour={shopColour(view, h.id)} size={46} />
+                <span className="podium-name">{h.you ? "Your shop" : shopName(h.name)}</span>
+                <span className="podium-coins">
+                  <Coin size={16} /> {crowns(h.capital)}
+                </span>
+                <span className="podium-block" style={{ height: heights[[1, 0, 2][i]] }}>
+                  {[2, 1, 3][i]}
+                </span>
+              </div>
+            ) : null,
+          )}
         </div>
-        <table className="houses">
-          <tbody>
-            {ranked.slice(0, 8).map((h) => (
-              <tr key={h.id} className={`${h.you ? "you" : ""}${h.active ? "" : " dead"}`}>
-                <td>
-                  <Seal house={h} size={20} /> {h.name}
-                </td>
-                <td className="num">{h.active ? crowns(h.capital) : "Struck off"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <p className="report-line">
+          Your title: <b>{titleFor(you?.active ? you.capital : 0)}</b>
+          {closed > 0 ? `. ${closed} ${closed === 1 ? "shop" : "shops"} closed this season.` : "."}
+        </p>
         {practice ? (
-          <button className="primary" onClick={onNext}>
-            Open next season
+          <button className="big-button" onClick={onNext}>
+            Play the next season
           </button>
         ) : (
-          <p className="muted small">The next season opens by itself in a few watches.</p>
+          <p className="working">The next season starts by itself in a moment.</p>
         )}
       </div>
     </div>
   );
 }
 
-export function StruckOff({
-  you,
-  onRefound,
-  onWatch,
-}: {
-  you: House;
-  onRefound: () => void;
-  onWatch: () => void;
-}) {
+export function StruckOff({ you, onRefound, onWatch }: { you: House; onRefound: () => void; onWatch: () => void }) {
   return (
-    <div className="modal-back" role="dialog" aria-modal="true" aria-label="Your house has failed">
-      <div className="modal">
-        <p className="kicker">Notice to the Room</p>
-        <h2>{you.name} is struck from the register</h2>
-        <p className="lede">
-          The claims came due and the money was not there. {crowns(you.premiums)} crowns of premium could not cover
-          what you owed. Every promise you made is void, and the captains you insured are on their own.
-        </p>
+    <div className="modal-back" role="dialog" aria-modal="true" aria-label="Your shop ran out of coins">
+      <div className="modal center">
+        <Pip size={110} mood="worried" />
+        <h2>Your shop ran out of coins!</h2>
+        <p className="lede">Too many ships sank and there wasn't enough to pay for them. It happens to the best of us.</p>
         {!you.refounded && (
-          <button className="primary" onClick={onRefound}>
-            Found the house again with {crowns(2000)} crowns
+          <button className="big-button" onClick={onRefound}>
+            Try again with {crowns(2000)} coins
           </button>
         )}
-        <button className="secondary" onClick={onWatch}>
-          Watch the season play out
+        <button className="soft-button" onClick={onWatch}>
+          Just watch for now
         </button>
-        <p className="muted small">A house may be founded again once in a season, with half the money and a poor name.</p>
       </div>
     </div>
   );
@@ -240,6 +217,7 @@ export function StruckOff({
 
 export interface Fallen {
   name: string;
+  colour: string;
   watch: number;
   owed: number;
   paid: number;
@@ -248,56 +226,59 @@ export interface Fallen {
 export function Collapse({
   fallen,
   lost,
-  watches,
   wrecks,
   onClose,
 }: {
   fallen: Fallen[];
   lost: number;
-  watches: number;
   wrecks: number;
   onClose: () => void;
 }) {
-  const first = fallen[0]?.watch ?? 0;
   return (
-    <div className="modal-back" role="dialog" aria-modal="true" aria-label="The spiral">
+    <div className="modal-back" role="dialog" aria-modal="true" aria-label="One storm">
       <div className="modal">
-        <p className="kicker">{watches} watches later</p>
-        <h2>One storm, {fallen.length} {fallen.length === 1 ? "house" : "houses"} gone</h2>
-        <p className="lede">
-          Each house thought it had passed its risk on. It had passed it to a house that had done the same. When claims
-          fell due, one failure left the next without its reinsurance. Real insurance markets have failed the same way.
-        </p>
+        <div className="pip-line">
+          <Pip size={84} mood="worried" />
+          <div>
+            <h2>
+              One storm closed {fallen.length} {fallen.length === 1 ? "shop" : "shops"}!
+            </h2>
+            <p>
+              Each shop had asked another shop to help pay if a ship sank. When too many ships sank, one shop ran out of
+              coins. Then the shop counting on it ran out too, like falling dominoes.
+            </p>
+          </div>
+        </div>
+        <div className="dominoes" aria-hidden="true">
+          {fallen.map((f, i) => (
+            <span key={f.name} style={{ animationDelay: `${0.3 + i * 0.35}s` }}>
+              <ShopIcon colour={f.colour} size={58} />
+            </span>
+          ))}
+        </div>
         <ol className="fallen">
           {fallen.map((f) => (
             <li key={f.name}>
-              <span className="when">+{f.watch - first}</span>
-              <b>{f.name}</b>
-              <span className="num">
+              <b>{shopName(f.name)}</b>
+              <span>
                 paid {crowns(f.paid)} of {crowns(f.owed)}
               </span>
             </li>
           ))}
         </ol>
-        <div className="kpis three">
+        <div className="numbers">
           <div>
-            <span className="label">Ships lost this season</span>
+            <span>Ships lost</span>
             <strong>{wrecks}</strong>
           </div>
           <div>
-            <span className="label">Capital destroyed</span>
+            <span>Coins gone</span>
             <strong>{crowns(lost)}</strong>
           </div>
-          <div>
-            <span className="label">Crowns created</span>
-            <strong>0</strong>
-          </div>
         </div>
-        <p className="muted small">
-          Only the storm was staged. Who fell, and in what order, came from the same rules the contract runs, replaying one fixed season.
-        </p>
-        <button className="primary" onClick={onClose}>
-          Open your own house
+        <p className="fine">Only the storm was planned. Who fell, and in what order, came from the game's real rules.</p>
+        <button className="big-button" onClick={onClose}>
+          Open your own shop
         </button>
       </div>
     </div>
@@ -322,53 +303,38 @@ export function WeekReview({
   return (
     <div className="modal-back" role="dialog" aria-modal="true" aria-label="The week in review">
       <div className="modal wide">
-        <p className="kicker">A week has passed</p>
-        <h2>The economy moved without you</h2>
-        <div className="kpis four">
+        <h2>A week went by</h2>
+        <p className="lede">Prices, fees and shops all moved by themselves.</p>
+        <div className="numbers">
           <div>
-            <span className="label">Your capital</span>
+            <span>Your coins</span>
             <strong className={change >= 0 ? "good-ink" : "bad-ink"}>
               {change >= 0 ? "+" : "−"}
               {crowns(Math.abs(change))}
             </strong>
           </div>
           <div>
-            <span className="label">Ships lost</span>
+            <span>Ships lost</span>
             <strong>{wrecks}</strong>
           </div>
           <div>
-            <span className="label">Houses failed</span>
+            <span>Shops closed</span>
             <strong>{failed}</strong>
           </div>
           <div>
-            <span className="label">Market rate</span>
+            <span>Average fee</span>
             <strong>
               {pct(before.rate)} → {pct(view.market.rate_bps)}
             </strong>
           </div>
         </div>
         <div className="charts">
-          <LineChart
-            title="Market rate"
-            points={days.map((d) => ({ x: d.day, y: d.rate_bps }))}
-            format={(y) => pct(y)}
-            xLabel={dayLabel}
-          />
-          <LineChart
-            title="Merrow price index"
-            points={days.map((d) => ({ x: d.day, y: d.price_index }))}
-            format={(y) => String(Math.round(y))}
-            xLabel={dayLabel}
-          />
-          <LineChart
-            title="Capital in the Room"
-            points={days.map((d) => ({ x: d.day, y: d.room_capital }))}
-            format={(y) => crowns(y)}
-            xLabel={dayLabel}
-          />
+          <LineChart title="Average fee" points={days.map((d) => ({ x: d.day, y: d.rate_bps }))} format={(y) => pct(y)} xLabel={dayLabel} />
+          <LineChart title="Town prices" points={days.map((d) => ({ x: d.day, y: d.price_index }))} format={(y) => String(Math.round(y))} xLabel={dayLabel} />
+          <LineChart title="Coins in all the shops" points={days.map((d) => ({ x: d.day, y: d.room_capital }))} format={(y) => crowns(y)} xLabel={dayLabel} />
         </div>
-        <button className="primary" onClick={onClose}>
-          Back to the desk
+        <button className="big-button" onClick={onClose}>
+          Back to the harbor
         </button>
       </div>
     </div>

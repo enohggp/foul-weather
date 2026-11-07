@@ -60,7 +60,7 @@ export default function PayPreview() {
         Pay from any chain <small>preview</small>
       </h3>
       <p className="small">
-        A house crest, priced at {PRICE_USDC} USDC, payable in any token NEAR Intents supports. It would be purely
+        A shop crest, priced at {PRICE_USDC} USDC, payable in any token NEAR Intents supports. It would be purely
         cosmetic. These are live quotes, and no money can move here.
       </p>
       <label className="label">

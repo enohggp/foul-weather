@@ -1,6 +1,7 @@
 // The side ledger: your book, the Room, the harbor, and what's under the hood.
 
 import { useMemo, useState } from "react";
+import { laneName, shopName } from "../cast";
 import type { Action, House, Position, View } from "../types";
 import { crowns, pct, priceReason, seaWord } from "../words";
 import { Flag, Seal, Spark } from "./bits";
@@ -53,7 +54,7 @@ function LayOff({ p, view, act, busy, onClose }: { p: Position; view: View; act:
   return (
     <div className="layoff">
       <p>
-        Pay another house to carry part of this. If the ship is lost, they pay you back, as long as they can.
+        Pay another shop to carry part of this. If the ship is lost, they pay you back, as long as they can.
       </p>
       <div className="segment" role="group" aria-label="Share to lay off">
         {[2500, 5000, 7500, 10000].map((bps) => (
@@ -74,7 +75,7 @@ function LayOff({ p, view, act, busy, onClose }: { p: Position; view: View; act:
         />
       </label>
       <p className="muted small">
-        The Room would probably accept {pct(hint)}{stormy ? ", and that rises as houses notice the glass" : ""}.
+        Other shops would probably accept {pct(hint)}{stormy ? ", and that rises as they notice the storm" : ""}.
       </p>
       <div className="row">
         <button
@@ -97,7 +98,7 @@ function LayOff({ p, view, act, busy, onClose }: { p: Position; view: View; act:
 
 function Book({ view, you, act, busy }: Props) {
   const [open, setOpen] = useState<number | null>(null);
-  if (!you) return <p className="muted pad">Found a house to start a book.</p>;
+  if (!you) return <p className="muted pad">Open a shop to start.</p>;
 
   const mine = view.positions.filter((p) => p.writer === you.id);
   const claims = view.claims.filter((c) => mine.some((p) => p.voyage === c.voyage));
@@ -126,10 +127,10 @@ function Book({ view, you, act, busy }: Props) {
       {claims.length > 0 && (
         <div className="claims">
           <h3>
-            Reckoning <small>you owe about {crowns(dueSoon)}</small>
+            Bills due <small>you owe about {crowns(dueSoon)}</small>
           </h3>
           {dueSoon > you.capital && (
-            <p className="warn">⚠ You owe more than you hold. Unless reinsurers pay you, your house will fail.</p>
+            <p className="warn">⚠ You owe more than you hold. Unless other shops pay you, your shop will close.</p>
           )}
           {claims.map((c) => {
             const left = Math.max(0, c.due - view.watch);
@@ -168,7 +169,7 @@ function Book({ view, you, act, busy }: Props) {
             <li key={lane.id}>
               <span className="lane-name">
                 {storm && <span title="Storm forecast">⚠ </span>}
-                {lane.name}
+                {laneName(lane.name)}
               </span>
               <span className="bar">
                 <i className={storm ? "hot" : ""} style={{ width: `${(you.net_by_lane[i] / top) * 100}%` }} />
@@ -205,7 +206,7 @@ function Book({ view, you, act, busy }: Props) {
               </div>
               <div className="row between small">
                 <span>
-                  {view.lanes[p.lane].name}, {pct(p.rate_bps)}
+                  {laneName(view.lanes[p.lane].name)}, {pct(p.rate_bps)}
                   {p.parent !== null ? ", reinsurance" : ""}
                 </span>
                 {net > 0 && !offered && (
@@ -263,7 +264,7 @@ function Network({ view }: { view: View }) {
               className={houses[l.from]?.active ? "link-line" : "link-line dead"}
             >
               <title>
-                {houses[l.to]?.name} relies on {houses[l.from]?.name} for {crowns(l.sum)} crowns
+                {shopName(houses[l.to]?.name ?? "")} relies on {shopName(houses[l.from]?.name ?? "")} for {crowns(l.sum)} coins
               </title>
             </line>
           );
@@ -275,7 +276,7 @@ function Network({ view }: { view: View }) {
             <g key={h.id}>
               <circle cx={p.x} cy={p.y} r={h.active ? r : 8} className={`node${h.you ? " you" : ""}${h.active ? "" : " dead"}`}>
                 <title>
-                  {h.name}: {h.active ? `${crowns(h.capital)} crowns` : "struck off"}
+                  {shopName(h.name)}: {h.active ? `${crowns(h.capital)} coins` : "closed"}
                 </title>
               </circle>
               <text x={p.x} y={p.y + 4} textAnchor="middle" className="node-label">
@@ -305,13 +306,13 @@ function Room({ view, you, act, busy }: Props) {
           return (
             <li key={o.id} className={stormy ? "stormy" : ""}>
               <p>
-                <b>{view.houses[o.house]?.name}</b> pays <b className="good-ink">{crowns(o.premium)}</b> for you to carry{" "}
+                <b>{shopName(view.houses[o.house]?.name ?? "")}</b> pays <b className="good-ink">{crowns(o.premium)}</b> for you to carry{" "}
                 {crowns(o.sum)} of {voyage ? view.captains[voyage.captain].ship : "a ship"}
               </p>
               <div className="row between small">
                 <span>
                   {stormy && "⚠ "}
-                  {view.lanes[o.lane].name}, {pct(o.rate_bps)}
+                  {laneName(view.lanes[o.lane].name)}, {pct(o.rate_bps)}
                 </span>
                 <button
                   className="link"
@@ -326,11 +327,11 @@ function Room({ view, you, act, busy }: Props) {
         })}
       </ul>
       <Network view={view} />
-      <h3>Houses</h3>
+      <h3>Shops</h3>
       <table className="houses">
         <thead>
           <tr>
-            <th scope="col">House</th>
+            <th scope="col">Shop</th>
             <th scope="col" className="num">
               Capital
             </th>
@@ -343,10 +344,10 @@ function Room({ view, you, act, busy }: Props) {
           {ranked.map((h) => (
             <tr key={h.id} className={`${h.you ? "you" : ""}${h.active ? "" : " dead"}`}>
               <td>
-                <Seal house={h} size={20} /> {h.name}
+                <Seal house={h} size={20} /> {shopName(h.name)}
                 {h.kind === "agent" && <small className="tag-agent"> agent</small>}
               </td>
-              <td className="num">{h.active ? crowns(h.capital) : "Struck off"}</td>
+              <td className="num">{h.active ? crowns(h.capital) : "Closed"}</td>
               <td className="num">{h.active ? crowns(h.net_book) : ""}</td>
             </tr>
           ))}
@@ -354,7 +355,7 @@ function Room({ view, you, act, busy }: Props) {
       </table>
       {view.hall.length > 0 && (
         <>
-          <h3>Hall of the Room</h3>
+          <h3>Hall of fame</h3>
           <table className="houses">
             <tbody>
               {view.hall.slice(0, 5).map((entry) => (
@@ -529,7 +530,7 @@ function Under({ view, hood, onRunWeek, onSpiral, onSummon, onSkip, practice }: 
             <tbody>
               {hood.sea.map((r) => (
                 <tr key={r.lane}>
-                  <td>{r.lane}</td>
+                  <td>{laneName(r.lane)}</td>
                   <td className="small">{r.route}</td>
                   <td className="num small">{(r.spreadBps / 100).toFixed(2)}%</td>
                   <td className="num">{r.sea}</td>
@@ -539,7 +540,7 @@ function Under({ view, hood, onRunWeek, onSpiral, onSummon, onSkip, practice }: 
           </table>
           <p className="muted small">
             Each lane follows a real cross-chain route. A live price check, with no money moved, sets how rough the water
-            is: {seaWord(hood.sea[0].sea).toLowerCase()} on {hood.sea[0].lane} right now.
+            is: {seaWord(hood.sea[0].sea).toLowerCase()} on the {laneName(hood.sea[0].lane)} right now.
           </p>
         </>
       ) : (
@@ -550,10 +551,10 @@ function Under({ view, hood, onRunWeek, onSpiral, onSummon, onSkip, practice }: 
 
       <h3>The books</h3>
       <dl className="facts">
-        <dt>Crowns</dt>
+        <dt>Coins</dt>
         <dd>{crowns(Number(view.market.crown_supply))} in existence, fixed for ever</dd>
         <dt>Guild</dt>
-        <dd>{crowns(view.market.guild_cash)} crowns</dd>
+        <dd>{crowns(view.market.guild_cash)} coins</dd>
         <dt>Tokens</dt>
         <dd>about {tokens} NEP-245 token types in one contract</dd>
       </dl>
@@ -564,8 +565,8 @@ function Under({ view, hood, onRunWeek, onSpiral, onSummon, onSkip, practice }: 
 export default function Side(props: Props & { tab: Tab; setTab: (t: Tab) => void; badge: { book: boolean; room: boolean; harbor: boolean } }) {
   const { tab, setTab, badge } = props;
   const tabs: [Tab, string, boolean][] = [
-    ["book", "Your Book", badge.book],
-    ["room", "The Room", badge.room],
+    ["book", "My ships", badge.book],
+    ["room", "Shops", badge.room],
     ["harbor", "Harbor", badge.harbor],
     ["hood", "Under the hood", false],
   ];

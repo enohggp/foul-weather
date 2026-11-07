@@ -21,7 +21,7 @@ There is no earlier code. All of it was started during the hackathon.
 | `@fast-auth-near/browser-sdk`, `@fast-auth-near/javascript-provider`, `near-api-js`, `buffer` | NEAR Auth login |
 | `react`, `react-dom` | Web client |
 | `vite`, `@vitejs/plugin-react`, `typescript` | Web build |
-| `@fontsource/im-fell-english`, `@fontsource/im-fell-english-sc`, `@fontsource/spectral` | Type |
+| `@fontsource/fredoka` | Type |
 
 ## External services
 

@@ -1,14 +1,20 @@
-// The game screen: one world view, however it is being driven.
+// The game screen: a bright harbor, a dock of captains, and Pip to help.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import * as sound from "./audio";
-import { NORMAL_WATCH_MS, PracticeDriver, WEEK_IN_A_MINUTE_MS } from "./engine";
-import type { Action, Driver, Receipt, View } from "./types";
-import Chart from "./ui/Chart";
-import Desk from "./ui/Desk";
-import { Collapse, Notes, Report, StruckOff, Toasts, WeekReview, type Fallen, type Toast } from "./ui/Overlays";
+import { CAST, fullName, shopName } from "./cast";
+import { NORMAL_WATCH_MS, PracticeDriver, SPIRAL_MS, WEEK_IN_A_MINUTE_MS } from "./engine";
+import { BUILDS, levelOf, loadProgress, QUESTS, saveProgress, SKILL, UNLOCKS, unlocked, type Progress } from "./progress";
+import type { Action, Driver, GameEvent, Position, Receipt, Slip, View } from "./types";
+import { Coin, Star } from "./ui/art";
+import Chart, { PORTS, type Fit } from "./ui/Chart";
+import { Helper, type Say } from "./ui/Helper";
+import { BuildShop, LevelUp, MyShips, Quests, Race, shopColour, TopBar } from "./ui/Hud";
+import { Collapse, Report, StruckOff, Toasts, WeekReview, type Fallen, type Toast } from "./ui/Overlays";
 import Side, { type Hood, type Tab } from "./ui/Side";
-import { crowns, eventLine, pct, when, watchName, type Line } from "./words";
+import { Theatre, type Moment } from "./ui/Theatre";
+import Dock, { dealFor, type Deal } from "./ui/Visitors";
+import { crowns } from "./words";
 
 interface Props {
   driver: Driver;
@@ -20,15 +26,36 @@ interface Props {
   spiral?: boolean;
 }
 
-interface Note {
-  title: string;
-  body: string;
+interface Reward {
+  id: number;
+  port: number;
+  captain: number;
+  stars: number;
 }
 
-const seen = new Set<string>();
-const SPIRAL_WATCHES = 28;
+interface Flyer {
+  id: number;
+  group: number;
+  kind: "coin" | "star";
+  x: number;
+  y: number;
+  dx: number;
+  dy: number;
+  delay: number;
+}
 
-const roomCapital = (view: View) => view.houses.filter((h) => h.active).reduce((sum, h) => sum + h.capital, 0);
+/** The last shop in the demo falls 20 watches in. See scripts/find-spiral.mjs. */
+const SPIRAL_WATCHES = 23;
+const COACH: Say[] = [
+  { id: "c0", text: "Ahoy! I'm Pip, your helper. This is your shop. You protect ships!", next: "Hello, Pip!" },
+  { id: "c1", text: "Captains are scared of storms, so they pay you coins to protect their ship.", next: "OK!" },
+  { id: "c2", text: "But if the ship sinks, YOU have to pay for it. Ouch!", mood: "worried", next: "I see" },
+  { id: "c3", text: "This meter shows if a deal is good. Green is great. Red means say no!", next: "Got it" },
+  { id: "c4", text: "This looks like a good one. Tap the green button to protect it!", mood: "cheer" },
+];
+const SPOT = ["", "earn", "lose", "danger", "yes"];
+
+const roomCoins = (view: View) => view.houses.filter((h) => h.active).reduce((sum, h) => sum + h.capital, 0);
 
 function useView(driver: Driver) {
   const [view, setView] = useState<View | null>(null);
@@ -36,45 +63,88 @@ function useView(driver: Driver) {
   return view;
 }
 
-export default function Game({ driver, houseName, hood, onExit, onSpiral, autoplay, spiral }: Props) {
-  const view = useView(driver);
-  const [selected, setSelected] = useState<number | null>(null);
-  const [tab, setTab] = useState<Tab>("book");
-  const [line, setLine] = useState(5000);
-  const [busy, setBusy] = useState(false);
-  const [ticker, setTicker] = useState<(Line & { seq: number })[]>([]);
-  const [toasts, setToasts] = useState<Toast[]>([]);
-  const [notes, setNotes] = useState<Note[]>([]);
-  const [flash, setFlash] = useState(0);
-  const [muted, setMuted] = useState(sound.isMuted);
-  const [pace, setPace] = useState(() => (driver instanceof PracticeDriver ? driver.pace() : NORMAL_WATCH_MS));
-  const [error, setError] = useState<string | null>(null);
-  const [priceTrail, setPriceTrail] = useState<Record<string, number[]>>({});
-  const [week, setWeek] = useState<{ left: number; capital: number; wrecks: number; failed: number; rate: number } | null>(null);
-  const [review, setReview] = useState<{ capital: number; wrecks: number; failed: number; rate: number } | null>(null);
-  const [watching, setWatching] = useState(false);
-  const [collapse, setCollapse] = useState<{ fallen: Fallen[]; lost: number; watches: number; wrecks: number } | null>(null);
-  const spiralStart = useRef<{ watch: number; capital: number } | null>(null);
-  const fallenRef = useRef<Fallen[]>([]);
-  const toastId = useRef(1);
-  const lastSeq = useRef(0);
-  const previous = useRef<View | null>(null);
-  const myQuotes = useRef(new Map<number, { rate: number; line: number; captain: number }>());
+function useNarrow() {
+  const [narrow, setNarrow] = useState(() => window.innerWidth < 900);
+  useEffect(() => {
+    const check = () => setNarrow(window.innerWidth < 900);
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+  return narrow;
+}
 
+export default function Game({ driver, houseName, hood, onExit, onSpiral, spiral }: Props) {
+  const view = useView(driver);
+  if (import.meta.env.DEV) (window as unknown as { fwDriver: Driver }).fwDriver = driver;
   const practice = driver instanceof PracticeDriver ? driver : null;
   const you = view?.houses.find((h) => h.you);
+  const narrow = useNarrow();
 
-  const note = useCallback((key: string, title: string, body: string) => {
-    if (seen.has(key)) return;
-    seen.add(key);
-    setNotes((list) => [...list, { title, body }]);
-  }, []);
+  const [progress, setProgress] = useState<Progress>(loadProgress);
+  const progressRef = useRef(progress);
+  const [coach, setCoach] = useState(() => (practice && !spiral && !loadProgress().taught ? 0 : -1));
+  const [only, setOnly] = useState<number | null>(null);
+  const [passed, setPassed] = useState<Set<number>>(new Set());
+  const [busy, setBusy] = useState(false);
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const [says, setSays] = useState<Say[]>([]);
+  const [flash, setFlash] = useState(0);
+  const [muted, setMuted] = useState(sound.isMuted);
+  const [pace, setPace] = useState(() => (practice ? practice.pace() : NORMAL_WATCH_MS));
+  const [problem, setProblem] = useState<string | null>(null);
+  const [priceTrail, setPriceTrail] = useState<Record<string, number[]>>({});
+  const [moment, setMoment] = useState<Moment | null>(null);
+  const [queue, setQueue] = useState<Moment[]>([]);
+  const [rewards, setRewards] = useState<Reward[]>([]);
+  const [fit, setFit] = useState<Fit>({ scale: 1, x: 0, y: 0 });
+  const [flyers, setFlyers] = useState<Flyer[]>([]);
+  const [levelUp, setLevelUp] = useState<number | null>(null);
+  const [shopOpen, setShopOpen] = useState(false);
+  const [ledger, setLedger] = useState(false);
+  const [tab, setTab] = useState<Tab>("hood");
+  const [watching, setWatching] = useState(false);
+  const [week, setWeek] = useState<{ left: number; capital: number; wrecks: number; failed: number; rate: number } | null>(null);
+  const [review, setReview] = useState<{ capital: number; wrecks: number; failed: number; rate: number } | null>(null);
+  const [collapse, setCollapse] = useState<{ fallen: Fallen[]; lost: number; wrecks: number } | null>(null);
+  const started = useRef(!(practice && !spiral && !loadProgress().taught));
+  const lastSeq = useRef(0);
+  const previous = useRef<View | null>(null);
+  const toastId = useRef(1);
+  const momentId = useRef(1);
+  const rewardId = useRef(1);
+  const homeScenes = useRef(0);
+  const earned = useRef(new Map<number, number>());
+  const signed = useRef(new Map<number, number>());
+  const told = useRef(new Set<string>());
+  const spiralStart = useRef<{ watch: number; coins: number } | null>(null);
+  const fitRef = useRef(fit);
+  fitRef.current = fit;
+  const flyerGroup = useRef(1);
+  const quiet = useRef(!!spiral);
+  const fallenRef = useRef<Fallen[]>([]);
 
   const toast = useCallback((t: Omit<Toast, "id">) => {
     const id = toastId.current++;
-    setToasts((list) => [...list.slice(-3), { ...t, id }]);
-    window.setTimeout(() => setToasts((list) => list.filter((x) => x.id !== id)), 4200);
+    setToasts((list) => [...list.slice(-2), { ...t, id }]);
+    window.setTimeout(() => setToasts((list) => list.filter((x) => x.id !== id)), 3800);
   }, []);
+
+  const speak = useCallback((say: Say) => {
+    setSays((list) => {
+      if (list.some((s) => s.id === say.id)) return list;
+      return [...list.filter((s) => s.actions), say];
+    });
+  }, []);
+
+  /** Pip says something once per game. */
+  const once = useCallback(
+    (say: Say) => {
+      if (told.current.has(say.id)) return;
+      told.current.add(say.id);
+      speak(say);
+    },
+    [speak],
+  );
 
   const setSpeed = useCallback(
     (ms: number) => {
@@ -84,25 +154,112 @@ export default function Game({ driver, houseName, hood, onExit, onSpiral, autopl
     [practice],
   );
 
+  /** Sends coins or stars flying up to the counter at the top. */
+  const fly = useCallback((kind: Flyer["kind"], x: number, y: number) => {
+    const target = document.querySelector(kind === "coin" ? ".pill.coins" : ".pill.stars")?.getBoundingClientRect();
+    if (!target) return;
+    const group = flyerGroup.current++;
+    const count = kind === "coin" ? 8 : 3;
+    const batch = Array.from({ length: count }, (_, i) => ({
+      id: group * 100 + i,
+      group,
+      kind,
+      x: x + (i - count / 2) * 9,
+      y: y + ((i * 7) % 20) - 10,
+      dx: target.left + 20 - x,
+      dy: target.top + 20 - y,
+      delay: i * 55,
+    }));
+    setFlyers((list) => [...list, ...batch]);
+    window.setTimeout(() => setFlyers((list) => list.filter((f) => f.group !== group)), 1500);
+  }, []);
+
+  /** Adds to the player's progress, finishing quests and levels as they come. */
+  const grow = useCallback(
+    (count: string | null, xp = 0, stars = 0, coins = 0) => {
+      if (quiet.current) return;
+      const p = progressRef.current;
+      const counts = count ? { ...p.counts, [count]: (p.counts[count] ?? 0) + 1 } : p.counts;
+      let next: Progress = { ...p, counts, xp: p.xp + xp, stars: p.stars + stars };
+      for (const q of QUESTS) {
+        if (next.doneQuests.includes(q.id)) continue;
+        const value = q.count === "coins" ? coins : (next.counts[q.count] ?? 0);
+        if (value >= q.target) {
+          next = { ...next, doneQuests: [...next.doneQuests, q.id], stars: next.stars + q.stars, xp: next.xp + 20 };
+          sound.coins();
+          toast({ kind: "good", title: "Quest done!", sub: `${q.text}. +${q.stars} stars` });
+        }
+      }
+      const before = levelOf(p.xp).level;
+      const after = levelOf(next.xp).level;
+      if (after > before) setLevelUp(after);
+      const cheapest = BUILDS.find((b) => !next.built.includes(b.id));
+      if (cheapest && next.stars >= cheapest.stars && !told.current.has("build")) {
+        told.current.add("build");
+        speak({ id: "build", text: "You have enough stars! Tap Build at the top to make your harbor pretty.", mood: "cheer" });
+      }
+      progressRef.current = next;
+      saveProgress(next);
+      setProgress(next);
+    },
+    [toast, speak],
+  );
+
+  const act = useCallback(
+    async (action: Action): Promise<Receipt | null> => {
+      setBusy(true);
+      setProblem(null);
+      try {
+        return await driver.act(action);
+      } catch (e) {
+        setProblem(e instanceof Error ? e.message : "That didn't work. Try again.");
+        return null;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [driver],
+  );
+
+  // First look at the world.
   useEffect(() => {
     if (!view || lastSeq.current) return;
     lastSeq.current = view.seq;
-    if (spiral) {
-      setTab("room");
-      spiralStart.current = { watch: view.watch, capital: roomCapital(view) };
-    } else {
-      note(
-        "start",
-        `Welcome to the Room, ${houseName}`,
-        practice
-          ? "A captain wants cover. If what they pay beats the likely risk, sign. The world waits for your first signature."
-          : "This Room is shared and it never stops. Slips close quickly, so sign when the rate beats the risk.",
-      );
-    }
     previous.current = view;
-  }, [view, houseName, note, spiral, practice]);
+    if (spiral) {
+      spiralStart.current = { watch: view.watch, coins: roomCoins(view) };
+      speak({ id: "spiral", text: "Watch the shops on the left! A huge storm is coming, and they all lean on each other.", mood: "worried" });
+    } else if (!practice) {
+      speak({ id: "live", text: "You're playing with real people now! Pick a captain and tap the green button.", mood: "cheer" });
+    } else if (started.current) {
+      setSpeed(NORMAL_WATCH_MS);
+      speak({ id: "back", text: "Welcome back! Captains are waiting at your dock.", mood: "cheer" });
+    }
+  }, [view, spiral, practice, speak, setSpeed]);
 
-  // Everything that happened since the last view.
+  // Choose the first captain for the lesson.
+  useEffect(() => {
+    if (!view || coach < 0 || coach > 4 || only !== null) return;
+    // A great deal that sails soon, so the first reward isn't a long wait.
+    const open = view.slips.filter((s) => s.qty > 0);
+    const great = open.filter((s) => dealFor(view, s, you).verdict === "great");
+    const first = [...(great.length ? great : open)].sort((a, b) => a.closes - b.closes)[0];
+    if (first) setOnly(first.id);
+  }, [view, you, coach, only]);
+
+  // Hold the world still while something big is on the screen.
+  const betweenSeasons = view !== null && view.intermission !== null;
+  const hold = !!practice && (levelUp !== null || shopOpen || ledger || moment !== null || betweenSeasons);
+  useEffect(() => {
+    if (!hold || !practice) return;
+    const before = practice.pace();
+    practice.setPace(0);
+    return () => {
+      if (practice.pace() === 0 && before) practice.setPace(before);
+    };
+  }, [hold, practice]);
+
+  // Everything that happened since the last look.
   useEffect(() => {
     if (!view) return;
     const before = previous.current;
@@ -111,121 +268,156 @@ export default function Game({ driver, houseName, hood, onExit, onSpiral, autopl
     previous.current = view;
     const me = view.houses.find((h) => h.you);
 
-    const mineBefore = new Map<number, number>();
+    const mine = new Map<number, number>();
     if (before && me) {
       for (const p of before.positions) {
-        if (p.writer === me.id) mineBefore.set(p.voyage, (mineBefore.get(p.voyage) ?? 0) + p.sum - p.ceded);
+        if (p.writer === me.id) mine.set(p.voyage, (mine.get(p.voyage) ?? 0) + p.sum - p.ceded);
       }
     }
 
-    const lines: (Line & { seq: number })[] = [];
-    for (const e of fresh) {
-      const text = eventLine(e, view);
-      if (text) lines.push({ ...text, seq: e.seq });
-
+    const handle = (e: GameEvent) => {
       if (e.type === "bound" && me) {
-        const mine = view.positions.filter((p) => p.voyage === e.voyage && p.writer === me.id);
-        if (mine.length) {
-          const earned = mine.reduce((sum, p) => sum + Math.floor((p.sum * p.rate_bps) / 10000), 0);
-          const risk = mine.reduce((sum, p) => sum + p.sum, 0);
-          sound.stamp();
+        const held = view.positions.filter((p) => p.voyage === e.voyage && p.writer === me.id);
+        if (held.length) {
+          const fee = held.reduce((sum, p) => sum + Math.floor((p.sum * p.rate_bps) / 10000), 0);
+          earned.current.set(e.voyage, fee);
           sound.coins();
-          toast({ kind: "bound", title: "Bound", sub: `+${crowns(earned)} now, ${crowns(risk)} at risk` });
-          note(
-            "bound",
-            "The line is bound",
-            `You've been paid ${crowns(earned)} crowns. If she comes home you keep it. If she's lost you pay ${crowns(risk)}. Listen for the bell: two strokes for safe, one for lost.`,
-          );
+          toast({ kind: "good", title: `+${crowns(fee)} coins!`, sub: `${CAST[e.captain % CAST.length].name} has set sail` });
+          const f = fitRef.current;
+          fly("coin", f.x + PORTS[0][0] * f.scale, f.y + PORTS[0][1] * f.scale);
+          once({ id: "ring", text: "Hooray! Your ship has a gold ring on the map. Watch it sail!", mood: "cheer" });
         }
       }
-      if (e.type === "home" && mineBefore.has(e.voyage)) {
+      if (quiet.current && e.type !== "house_failed" && e.type !== "storm_hit") return;
+      if (e.type === "home" && mine.has(e.voyage)) {
         sound.bell(2);
-        toast({ kind: "safe", title: "Safe home", sub: view.captains[e.captain].ship });
-        note("home", "Two bells", "A ship safe home. The premium is yours to keep, and your capital can carry more.");
+        const reward: Reward = { id: rewardId.current++, port: e.port, captain: e.captain, stars: 1 };
+        rewardsRef.current = [...rewardsRef.current, reward];
+        setRewards(rewardsRef.current);
+        window.setTimeout(() => collectLater.current(reward.id), 16000);
+        if (homeScenes.current < 2) {
+          homeScenes.current += 1;
+          setQueue((q) => [...q, { id: momentId.current++, kind: "home", ship: "", captain: e.captain, amount: 0 }]);
+        }
+        once({ id: "collect", text: "Your ship made it! Tap the star on the map to collect it.", mood: "cheer" });
       }
-      if (e.type === "wrecked" && mineBefore.has(e.voyage)) {
-        const amount = mineBefore.get(e.voyage) ?? 0;
+      if (e.type === "wrecked" && mine.has(e.voyage)) {
+        const amount = mine.get(e.voyage) ?? 0;
         sound.bell(1);
-        toast({ kind: "lost", title: "Lost at sea", sub: `${view.captains[e.captain].ship}, −${crowns(amount)}` });
-        note(
-          "wreck",
-          "One bell",
-          `The claim falls due in ${view.fees.reckoning_watches} watches. If the wreck smells wrong, hold an inquiry in Your Book before it does.`,
-        );
-        setTab("book");
-      }
-      if (e.type === "glass") {
-        const threatened = me ? view.positions.some((p) => p.writer === me.id && e.lanes & (1 << p.lane)) : false;
-        if (e.great) sound.thunder();
-        if (threatened) {
-          note(
-            "glass",
-            "The glass is falling",
-            "Ships on those lanes are in danger. Open Your Book and lay off risk now, while the Room is still asleep. It will wake up.",
-          );
-          setTab("book");
-        }
-      }
-      if (e.type === "storm_hit" && e.great) {
-        setFlash(performance.now());
         sound.thunder();
+        setQueue((q) => [...q, { id: momentId.current++, kind: "wreck", ship: view.captains[e.captain].ship, captain: e.captain, amount }]);
+        once({ id: "wreck", text: "Oh no! That's the risk of the job. Say no to the red ones and you'll be fine.", mood: "worried" });
       }
-      if (e.type === "house_failed") {
-        const fallen = view.houses[e.house];
-        if (fallen) fallenRef.current = [...fallenRef.current, { name: fallen.name, watch: e.watch, owed: e.owed, paid: e.paid }];
-        if (fallen?.you) {
-          sound.bell(1);
-        } else {
-          toast({ kind: "lost", title: "A house has failed", sub: fallen?.name });
-          note(
-            "failed",
-            "A house has failed",
-            "Anyone who laid risk off onto them is now exposed. Their reinsurance is worth nothing. Look in the Room: who goes next?",
-          );
+      if (e.type === "claim_due" && me && e.suspicion >= 8 && unlocked(progressRef.current.xp, SKILL.detective)) {
+        const claim = view.claims.find((c) => c.id === e.claim);
+        if (claim && view.positions.some((p) => p.voyage === claim.voyage && p.writer === me.id)) {
+          speak({
+            id: `detect-${e.claim}`,
+            text: `Hmm! That ship sank in strange weather. Did ${fullName(e.captain)} sink it on purpose? Investigate for ${view.fees.inquiry} coins?`,
+            mood: "worried",
+            actions: [
+              {
+                label: "Investigate!",
+                run: () => {
+                  void act({ kind: "inquiry", claim: e.claim });
+                  grow("investigated", 15, 0, me.capital);
+                  setSays((list) => list.filter((s) => s.id !== `detect-${e.claim}`));
+                },
+              },
+              { label: "No, just pay", kind: "no", run: () => setSays((list) => list.filter((s) => s.id !== `detect-${e.claim}`)) },
+            ],
+          });
         }
-      }
-      if (e.type === "laid_up") {
-        note(
-          "laid_up",
-          "A captain is out of money",
-          `${view.captains[e.captain].name} can't sail. Refit them in the Harbor and they'll repay you from future voyages.`,
-        );
-      }
-      if (e.type === "ceded" && me && e.from === me.id) {
-        sound.coins();
-        toast({ kind: "bound", title: "Risk laid off", sub: `${crowns(e.sum)} to ${view.houses[e.to]?.name}` });
-      }
-      if (e.type === "ceded" && me && e.to === me.id) {
-        sound.coins();
-        toast({ kind: "bound", title: "Risk taken on", sub: `${crowns(e.sum)} from ${view.houses[e.from]?.name}` });
       }
       if (e.type === "fraud" && me && e.house === me.id) {
         sound.coins();
-        toast({ kind: "safe", title: "Fraud proven", sub: `Claim void, +${crowns(e.reward)} reward` });
+        toast({ kind: "good", title: "Caught them!", sub: `You don't pay, and you get ${crowns(e.reward)} coins` });
       }
       if (e.type === "honest_loss" && me && e.house === me.id) {
-        toast({ kind: "plain", title: "An honest loss", sub: "Your name suffers for asking" });
+        toast({ kind: "plain", title: "It was an accident", sub: "The captain told the truth" });
       }
-    }
-    if (lines.length) setTicker((list) => [...lines.reverse(), ...list].slice(0, 6));
+      if (e.type === "glass") {
+        if (e.great) sound.thunder();
+        const risky = me ? view.positions.filter((p) => p.writer === me.id && e.lanes & (1 << p.lane) && p.ceded === 0) : [];
+        if (risky.length && me) warnStorm.current(risky, e.great);
+        else if (e.great) once({ id: "great", text: "A big storm is coming! Be careful which ships you protect.", mood: "worried" });
+      }
+      if (e.type === "storm_hit") {
+        setSays((list) => list.filter((s) => !s.id.startsWith("storm-")));
+        if (e.great) {
+          setFlash(performance.now());
+          sound.thunder();
+        }
+      }
+      if (e.type === "house_failed") {
+        const fallen = view.houses[e.house];
+        if (fallen) {
+          fallenRef.current = [
+            ...fallenRef.current,
+            { name: fallen.name, colour: shopColour(view, fallen.id), watch: e.watch, owed: e.owed, paid: e.paid },
+          ];
+          if (!fallen.you) {
+            toast({ kind: "bad", title: `${shopName(fallen.name)} closed!`, sub: "It ran out of coins" });
+            if (spiral) {
+              if (fallenRef.current.length === 1) {
+                speak({ id: "domino1", text: "One shop ran out of coins. But other shops were counting on it!", mood: "worried" });
+              } else if (fallenRef.current.length === 2) {
+                setSays((list) => list.filter((s) => s.id !== "domino1"));
+                speak({ id: "domino2", text: "Now they can't pay either. It's spreading like falling dominoes!", mood: "worried" });
+              }
+            } else {
+              once({ id: "closed", text: "A rival shop ran out of coins and closed. See the sign on it in town?", mood: "worried" });
+            }
+          }
+        }
+      }
+      if (e.type === "laid_up" && unlocked(progressRef.current.xp, SKILL.helper) && me) {
+        speak({
+          id: `help-${e.captain}`,
+          text: `${fullName(e.captain)} has run out of coins! Lend ${crowns(view.fees.refit)} coins? They'll pay you back more later.`,
+          actions: [
+            {
+              label: "Help them",
+              run: () => {
+                void act({ kind: "refit", captain: e.captain });
+                grow("helped", 20, 0, me.capital);
+                setSays((list) => list.filter((s) => s.id !== `help-${e.captain}`));
+              },
+            },
+            { label: "Not today", kind: "no", run: () => setSays((list) => list.filter((s) => s.id !== `help-${e.captain}`)) },
+          ],
+        });
+      }
+      if (e.type === "ceded" && me && e.from === me.id) {
+        sound.coins();
+        toast({ kind: "good", title: "Danger shared!", sub: `${shopName(view.houses[e.to]?.name ?? "A shop")} will help pay` });
+        grow("shared", 15, 0, me.capital);
+      }
+    };
+    fresh.forEach(handle);
 
-    // An offer that lapsed without a taker was priced too low.
-    if (before && me) {
+    // Tell the player what happened to ships they said YES to.
+    if (before && me && !quiet.current) {
+      for (const s of before.slips) {
+        if (s.quotes.some((q) => q.house === me.id)) signed.current.set(s.id, s.captain);
+      }
+      for (const [id, captain] of signed.current) {
+        if (view.slips.some((s) => s.id === id)) continue;
+        signed.current.delete(id);
+        const won = view.voyages.some((v) => v.captain === captain && view.positions.some((p) => p.voyage === v.id && p.writer === me.id));
+        if (!won) {
+          toast({ kind: "plain", title: "Another shop got this one", sub: `${CAST[captain % CAST.length].name} went with a cheaper shop` });
+          once({ id: "outbid", text: "Another shop asked for less this time. Don't worry, there are more captains!" });
+        }
+      }
       const placed = new Set(fresh.flatMap((e) => (e.type === "ceded" ? [e.position] : [])));
       for (const o of before.offers) {
         if (o.house !== me.id || placed.has(o.position)) continue;
         if (!view.offers.some((x) => x.id === o.id) && view.positions.some((p) => p.id === o.position)) {
-          toast({ kind: "plain", title: "No taker", sub: "The Room wanted a better rate" });
+          toast({ kind: "plain", title: "No shop would share", sub: "Your ship is on its own" });
         }
       }
-    }
-
-    if (view.offers.some((o) => me && o.house !== me.id)) {
-      note(
-        "offer",
-        "Easy money in the Room",
-        "Another house will pay you to carry part of its risk. It's free premium, right up until it isn't.",
-      );
+      if (me.active) grow(null, 0, 0, me.capital);
     }
 
     const merrow = view.ports[0];
@@ -234,80 +426,135 @@ export default function Game({ driver, houseName, hood, onExit, onSpiral, autopl
       for (const g of merrow.goods) next[g.name] = [...(trail[g.name] ?? []), g.price].slice(-40);
       return next;
     });
+  }, [view, toast, once, speak, act, grow, fly, spiral]);
 
-    // Tell the player what happened to slips they signed.
-    if (before && me) {
-      for (const s of before.slips) {
-        const quote = s.quotes.find((q) => q.house === me.id);
-        if (quote) myQuotes.current.set(s.id, { rate: quote.rate_bps, line: quote.line_bps, captain: s.captain });
-      }
-      for (const [id, q] of myQuotes.current) {
-        if (view.slips.some((s) => s.id === id)) continue;
-        myQuotes.current.delete(id);
-        const bound = view.positions.some((p) => p.writer === me.id && view.voyages.some((v) => v.id === p.voyage && v.captain === q.captain));
-        if (!bound) toast({ kind: "plain", title: "Undercut", sub: `${view.captains[q.captain].ship} placed elsewhere` });
-      }
-    }
-  }, [view, note, toast]);
-
-  // Sign-first start: the world waits for the first signature.
-  const started = useRef(autoplay);
-
-  // Notes clear themselves so they never sit over the chart for long.
+  const warnStorm = useRef<(risky: Position[], great: boolean) => void>(() => undefined);
   useEffect(() => {
-    if (!notes.length || !started.current) return;
-    const timer = window.setTimeout(() => setNotes((list) => list.slice(1)), 13000);
+    warnStorm.current = (risky, great) => {
+      if (!view) return;
+      const canShare = unlocked(progressRef.current.xp, SKILL.share);
+      const cost = risky.reduce((sum, p) => sum + Math.floor(((p.sum * 0.75 * (p.lay_off_hint_bps || 800)) / 10000)), 0);
+      const id = `storm-${view.watch}`;
+      speak({
+        id,
+        text: canShare
+          ? `Storm coming! Your ship is in danger. Pay ${crowns(cost)} coins so a rival shop helps if it sinks?`
+          : `${great ? "A big storm" : "A storm"} is coming towards your ship! Fingers crossed!`,
+        mood: "worried",
+        actions: canShare
+          ? [
+              {
+                label: `Share the danger`,
+                run: () => {
+                  for (const p of risky) {
+                    void act({ kind: "offer_cession", position: p.id, share_bps: 7500, rate_bps: p.lay_off_hint_bps || 800 });
+                  }
+                  setSays((list) => list.filter((s) => s.id !== id));
+                },
+              },
+              { label: "Take the risk", kind: "no", run: () => setSays((list) => list.filter((s) => s.id !== id)) },
+            ]
+          : undefined,
+      });
+    };
+  }, [view, speak, act]);
+
+  const collectLater = useRef<(id: number) => void>(() => undefined);
+  const rewardsRef = useRef<Reward[]>([]);
+  const collect = useCallback(
+    (id: number) => {
+      const reward = rewardsRef.current.find((r) => r.id === id);
+      if (!reward) return;
+      rewardsRef.current = rewardsRef.current.filter((r) => r.id !== id);
+      setRewards(rewardsRef.current);
+      const f = fitRef.current;
+      sound.coins();
+      fly("star", f.x + PORTS[reward.port][0] * f.scale, f.y + PORTS[reward.port][1] * f.scale);
+      grow("collected", 15, 1, you?.capital ?? 0);
+      once({ id: "goal", text: "Keep going! The shop with the most coins at the Harbor Festival wins.", mood: "cheer" });
+    },
+    [grow, fly, once, you?.capital],
+  );
+  collectLater.current = collect;
+
+  // One scene at a time.
+  useEffect(() => {
+    if (!moment && queue.length) {
+      setMoment(queue[0]);
+      setQueue((q) => q.slice(1));
+    }
+  }, [moment, queue]);
+  const endMoment = useCallback(() => setMoment(null), []);
+
+  // Pip's ordinary remarks fade by themselves.
+  const current = coach >= 0 && coach <= 4 ? COACH[coach] : (says[0] ?? null);
+  useEffect(() => {
+    if (!says.length || says[0].actions || (coach >= 0 && coach <= 4)) return;
+    const timer = window.setTimeout(() => setSays((list) => list.slice(1)), 6500);
     return () => window.clearTimeout(timer);
-  }, [notes]);
-  const act = useCallback(
-    async (action: Action): Promise<Receipt | null> => {
-      setBusy(true);
-      setError(null);
-      try {
-        const receipt = await driver.act(action);
-        if (action.kind === "quote") {
-          sound.stamp();
-          sound.startSurf();
-          if (!started.current) {
-            started.current = true;
-            setSpeed(NORMAL_WATCH_MS);
-            setNotes((list) => list.slice(1));
-          }
-        }
-        return receipt;
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "That could not be done.");
-        return null;
-      } finally {
-        setBusy(false);
+  }, [says, coach]);
+
+  const yes = useCallback(
+    (slip: Slip, deal: Deal) => {
+      sound.stamp();
+      sound.startSurf();
+      void act({ kind: "quote", slip: slip.id, rate_bps: deal.rate, line_bps: deal.share });
+      grow("protected", 10, 0, you?.capital ?? 0);
+      once({ id: "ready", text: "Yes! Now the captain gets ready to sail. You get paid when the ship leaves.", mood: "cheer" });
+      if (!started.current) {
+        started.current = true;
+        setCoach(-1);
+        setOnly(null);
+        setSpeed(NORMAL_WATCH_MS);
+        const p = { ...progressRef.current, taught: true };
+        progressRef.current = p;
+        saveProgress(p);
+        setProgress(p);
       }
     },
-    [driver, setSpeed],
+    [act, grow, once, setSpeed, you?.capital],
   );
 
-  // A week in a minute.
+  const no = useCallback(
+    (slip: Slip, deal: Deal) => {
+      setPassed((set) => new Set(set).add(slip.id));
+      if (deal.verdict === "bad") {
+        grow("refusedBad", 5, 0, you?.capital ?? 0);
+        once({ id: "smart", text: "Smart! That deal wasn't worth the danger.", mood: "cheer" });
+      }
+    },
+    [grow, once, you?.capital],
+  );
+
+  const shareOne = useCallback(
+    (p: Position) => {
+      void act({ kind: "offer_cession", position: p.id, share_bps: 7500, rate_bps: p.lay_off_hint_bps || 800 });
+    },
+    [act],
+  );
+
+  // A week in a minute, for grown-ups and judges.
   const runWeek = useCallback(() => {
     if (!practice || !view) return;
     const me = view.houses.find((h) => h.you);
-    const snapshot = {
+    setWeek({
       left: 42,
       capital: me?.capital ?? 0,
       wrecks: view.captains.reduce((sum, c) => sum + c.losses, 0),
       failed: view.houses.filter((h) => !h.active).length,
       rate: view.market.rate_bps,
-    };
-    setWeek(snapshot);
-    setNotes([]);
+    });
     started.current = true;
+    quiet.current = true;
+    setCoach(-1);
+    setLedger(false);
     void driver.act({ kind: "set_clerk", on: true });
     setSpeed(WEEK_IN_A_MINUTE_MS);
   }, [practice, view, driver, setSpeed]);
 
   useEffect(() => {
     if (!practice) return;
-    practice.onWatch = () => {
-      setWeek((w) => (w ? { ...w, left: w.left - 1 } : w));
-    };
+    practice.onWatch = () => setWeek((w) => (w ? { ...w, left: w.left - 1 } : w));
     return () => {
       practice.onWatch = null;
     };
@@ -316,6 +563,7 @@ export default function Game({ driver, houseName, hood, onExit, onSpiral, autopl
   const finishWeek = useCallback(() => {
     if (!week) return;
     setWeek(null);
+    quiet.current = false;
     void driver.act({ kind: "set_clerk", on: false });
     setSpeed(0);
     setReview({ capital: week.capital, wrecks: week.wrecks, failed: week.failed, rate: week.rate });
@@ -333,168 +581,178 @@ export default function Game({ driver, houseName, hood, onExit, onSpiral, autopl
     setSpeed(0);
     setCollapse({
       fallen: fallenRef.current,
-      lost: Math.max(0, start.capital - roomCapital(view)),
-      watches: SPIRAL_WATCHES,
+      lost: Math.max(0, start.coins - roomCoins(view)),
       wrecks: view.captains.reduce((sum, c) => sum + c.losses, 0),
     });
   }, [spiral, view, collapse, setSpeed]);
 
-  // Keyboard.
+  // Finishing a season counts as a quest.
+  const seasonDone = useRef(false);
   useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement;
-      if (target.tagName === "INPUT" && (target as HTMLInputElement).type === "text") return;
-      if (event.key === " ") {
-        event.preventDefault();
-        if (practice) setSpeed(pace ? 0 : NORMAL_WATCH_MS);
-      }
-      if (event.key === "1") setLine(2500);
-      if (event.key === "2") setLine(5000);
-      if (event.key === "3") setLine(10000);
-      if (event.key === "Enter" && target.tagName !== "BUTTON") {
-        // Press the real button, so the rate on the slider is the rate that signs.
-        document.querySelector<HTMLButtonElement>(".slip-open .primary")?.click();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [practice, pace, setSpeed]);
+    if (view?.intermission !== null && view?.intermission !== undefined && you?.active && !seasonDone.current) {
+      seasonDone.current = true;
+      grow("seasons", 40, 5, you.capital);
+    }
+    if (view?.intermission === null) seasonDone.current = false;
+  }, [view?.intermission, you?.active, you?.capital, grow]);
 
-  const badge = useMemo(() => {
-    if (!view || !you) return { book: false, room: false, harbor: false };
-    const claimed = view.claims.some((c) => view.positions.some((p) => p.voyage === c.voyage && p.writer === you.id));
-    return {
-      book: claimed,
-      room: view.offers.some((o) => o.house !== you.id),
-      harbor: view.captains.some((c) => c.state.state === "laid_up"),
-    };
-  }, [view, you]);
+  const inset = useMemo(() => (narrow ? { left: 0, top: 8, bottom: 8 } : { left: 386, top: 70, bottom: 4 }), [narrow]);
+  const badge = useMemo(() => ({ book: false, room: !!view?.offers.length, harbor: false }), [view?.offers.length]);
 
   if (!view) return null;
 
-  const t = when(view.watch, view.watches_per_day);
-  const seasonProgress = Math.min(100, (view.watch / view.season_watches) * 100);
   const showStruck = you && !you.active && !watching && view.intermission === null;
+  const canShare = unlocked(progress.xp, SKILL.share);
+  const watchMs = practice ? pace || NORMAL_WATCH_MS : view.watch_ms;
 
   return (
     <div className="game">
-      <header className="top">
-        <div className="brand">
-          <button className="link brand-name" onClick={onExit} title="Leave the Room">
-            Foul Weather
-          </button>
-          <span className="date">
-            Season {view.season}, week {t.week}, day {t.day}
-            <small>{watchName(view.watch)}</small>
-          </span>
-          <span className="season-bar" aria-hidden="true">
-            <i style={{ width: `${seasonProgress}%` }} />
-          </span>
-        </div>
-        <div className="purse">
-          <div>
-            <span className="label">Capital</span>
-            <strong key={you?.capital} className="capital">
-              {crowns(you?.capital ?? 0)}
-            </strong>
-          </div>
-          <div>
-            <span className="label">Good name</span>
-            <strong>{you?.reputation ?? 0}</strong>
-          </div>
-          <div>
-            <span className="label">Market</span>
-            <strong>{pct(view.market.rate_bps)}</strong>
-          </div>
-        </div>
-        <div className="controls">
-          {practice && (
-            <div className="segment" role="group" aria-label="Speed">
-              <button className={pace === 0 ? "on" : ""} onClick={() => setSpeed(0)} aria-label="Pause" title="Pause (Space)">
-                ❚❚
-              </button>
-              <button className={pace === NORMAL_WATCH_MS ? "on" : ""} onClick={() => { started.current = true; setSpeed(NORMAL_WATCH_MS); }} aria-label="Normal speed" title="Normal speed">
-                ▶
-              </button>
-              <button className={pace === WEEK_IN_A_MINUTE_MS ? "on" : ""} onClick={() => { started.current = true; setSpeed(WEEK_IN_A_MINUTE_MS); }} aria-label="Fast" title="Fast: a week in a minute">
-                ▶▶
-              </button>
-            </div>
-          )}
-          {!practice && <span className="live-chip">Live Room</span>}
+      <TopBar
+        view={view}
+        you={you}
+        progress={progress}
+        paused={pace === 0}
+        fast={pace > 0 && pace < NORMAL_WATCH_MS}
+        canPace={!!practice && started.current}
+        muted={muted}
+        onPause={() => setSpeed(0)}
+        onPlay={() => setSpeed(NORMAL_WATCH_MS)}
+        onFast={() => setSpeed(spiral ? SPIRAL_MS : WEEK_IN_A_MINUTE_MS)}
+        onMute={() => {
+          sound.setMuted(!muted);
+          setMuted(!muted);
+        }}
+        onBuild={() => setShopOpen(true)}
+        onLedger={() => setLedger(true)}
+        onHome={onExit}
+      />
+
+      <main className={`sea${moment?.kind === "wreck" ? " shaking" : ""}`}>
+        <Chart view={view} driver={driver} flash={flash} built={progress.built} level={levelOf(progress.xp).level} inset={inset} onFit={setFit} />
+        {rewards.map((r) => (
           <button
-            className="icon"
-            aria-label={muted ? "Turn sound on" : "Turn sound off"}
-            onClick={() => {
-              sound.setMuted(!muted);
-              setMuted(!muted);
-            }}
+            key={r.id}
+            className="reward"
+            style={{ left: fit.x + PORTS[r.port][0] * fit.scale, top: fit.y + PORTS[r.port][1] * fit.scale }}
+            onClick={() => collect(r.id)}
+            aria-label="Collect your star"
           >
-            {muted ? "🔇" : "🔔"}
+            <Star size={50} />
           </button>
-        </div>
-      </header>
-
-      <Desk view={view} you={you} selected={selected} onSelect={setSelected} act={act} busy={busy} line={line} setLine={setLine} />
-
-      <main className="sea">
-        <Chart view={view} driver={driver} flash={flash} />
+        ))}
         <Toasts toasts={toasts} />
+        <div className="right-rail">
+          {!spiral && <Quests progress={progress} coins={you?.capital ?? 0} />}
+          {!spiral && <Race view={view} />}
+        </div>
+        {flyers.map((f) => (
+          <span
+            key={f.id}
+            className="flyer"
+            style={{ left: f.x, top: f.y, animationDelay: `${f.delay}ms`, "--dx": `${f.dx}px`, "--dy": `${f.dy}px` } as CSSProperties}
+          >
+            {f.kind === "coin" ? <Coin size={26} /> : <Star size={30} />}
+          </span>
+        ))}
         {week && (
           <div className="fastforward" role="status">
-            <b>Your clerk has the desk</b>
-            <span>A week in a minute: {Math.max(0, week.left)} watches left</span>
-            <button className="link" onClick={finishWeek}>
+            <b>Pip is running your shop</b>
+            <span>A week in a minute: {Math.max(0, week.left)} left</span>
+            <button className="text-link" onClick={finishWeek}>
               Stop
             </button>
           </div>
         )}
-        <Notes note={notes[0] ?? null} onDismiss={() => setNotes((list) => list.slice(1))} />
-        <ol className="ticker" aria-label="The List: latest news" aria-live="off">
-          {ticker.slice(0, 4).map((line) => (
-            <li key={line.seq} className={line.tone}>
-              {line.text}
-            </li>
-          ))}
-        </ol>
-        {error && (
-          <button className="error-bar" onClick={() => setError(null)}>
-            {error}
+        <Helper say={current} onNext={() => (coach >= 0 && coach < 4 ? setCoach(coach + 1) : setSays((list) => list.slice(1)))} />
+        {moment && <Theatre moment={moment} onDone={endMoment} />}
+        {problem && (
+          <button className="problem-bar" onClick={() => setProblem(null)}>
+            {problem}
           </button>
         )}
       </main>
 
-      <Side
-        view={view}
-        you={you}
-        act={act}
-        busy={busy}
-        tab={tab}
-        setTab={setTab}
-        badge={badge}
-        priceTrail={priceTrail}
-        hood={hood}
-        practice={!!practice}
-        onSkip={() => {
-          if (!practice) return;
-          started.current = true;
-          setNotes([]);
-          void (async () => {
-            await driver.act({ kind: "set_clerk", on: true });
-            setSpeed(0);
-            practice.skip(Math.max(1, view.season_watches - view.watch));
-            await driver.act({ kind: "set_clerk", on: false }).catch(() => undefined);
-          })();
-        }}
-        onRunWeek={runWeek}
-        onSpiral={onSpiral}
-        onSummon={() => {
-          started.current = true;
-          void act({ kind: "summon_storm" });
-          if (!pace) setSpeed(NORMAL_WATCH_MS);
-        }}
-      />
+      {spiral ? (
+        <section className="dock">
+          <Race view={view} wide />
+        </section>
+      ) : (
+        <Dock
+          view={view}
+          you={you}
+          xp={progress.xp}
+          watchMs={watchMs}
+          busy={busy}
+          spotlight={coach >= 0 ? SPOT[coach] || null : null}
+          lockNo={coach >= 0}
+          passed={passed}
+          only={coach >= 0 ? only : null}
+          onYes={yes}
+          onNo={no}
+          act={act}
+          onInspect={() => grow("inspected", 10, 0, you?.capital ?? 0)}
+        >
+          <MyShips view={view} you={you} canShare={canShare} busy={busy} onShare={shareOne} />
+        </Dock>
+      )}
 
+      {ledger && (
+        <div className="drawer" role="dialog" aria-label="For grown-ups">
+          <button className="drawer-close" onClick={() => setLedger(false)}>
+            Close
+          </button>
+          <Side
+            view={view}
+            you={you}
+            act={act}
+            busy={busy}
+            tab={tab}
+            setTab={setTab}
+            badge={badge}
+            priceTrail={priceTrail}
+            hood={hood}
+            practice={!!practice}
+            onSkip={() => {
+              if (!practice) return;
+              started.current = true;
+              setCoach(-1);
+              setLedger(false);
+              void (async () => {
+                await driver.act({ kind: "set_clerk", on: true });
+                setSpeed(0);
+                practice.skip(Math.max(1, view.season_watches - view.watch));
+                await driver.act({ kind: "set_clerk", on: false }).catch(() => undefined);
+              })();
+            }}
+            onRunWeek={runWeek}
+            onSpiral={onSpiral}
+            onSummon={() => {
+              started.current = true;
+              setCoach(-1);
+              setLedger(false);
+              void act({ kind: "summon_storm" });
+              if (!pace) setSpeed(NORMAL_WATCH_MS);
+            }}
+          />
+        </div>
+      )}
+
+      {shopOpen && (
+        <BuildShop
+          progress={progress}
+          onBuy={(id, stars) => {
+            const p = progressRef.current;
+            if (p.stars < stars || p.built.includes(id)) return;
+            const next = { ...p, stars: p.stars - stars, built: [...p.built, id] };
+            progressRef.current = next;
+            saveProgress(next);
+            setProgress(next);
+            sound.coins();
+          }}
+          onClose={() => setShopOpen(false)}
+        />
+      )}
+      {levelUp !== null && <LevelUp level={levelUp} unlock={UNLOCKS[levelUp]} onClose={() => setLevelUp(null)} />}
       {review && (
         <WeekReview
           view={view}
@@ -513,6 +771,8 @@ export default function Game({ driver, houseName, hood, onExit, onSpiral, autopl
           practice={!!practice}
           onNext={() => {
             setWatching(false);
+            setPassed(new Set());
+            signed.current.clear();
             void (async () => {
               await act({ kind: "next_season" });
               await act({ kind: "found_house", name: houseName });
@@ -522,11 +782,7 @@ export default function Game({ driver, houseName, hood, onExit, onSpiral, autopl
         />
       )}
       {showStruck && you && (
-        <StruckOff
-          you={you}
-          onRefound={() => void act({ kind: "found_house", name: houseName })}
-          onWatch={() => setWatching(true)}
-        />
+        <StruckOff you={you} onRefound={() => void act({ kind: "found_house", name: houseName })} onWatch={() => setWatching(true)} />
       )}
     </div>
   );
