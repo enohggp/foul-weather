@@ -94,11 +94,13 @@ export default function Game({ driver, houseName, hood, onExit, onSpiral, autopl
       note(
         "start",
         `Welcome to the Room, ${houseName}`,
-        "A captain wants cover. If what they pay beats the likely risk, sign. The world waits for your first signature.",
+        practice
+          ? "A captain wants cover. If what they pay beats the likely risk, sign. The world waits for your first signature."
+          : "This Room is shared and it never stops. Slips close quickly, so sign when the rate beats the risk.",
       );
     }
     previous.current = view;
-  }, [view, houseName, note, spiral]);
+  }, [view, houseName, note, spiral, practice]);
 
   // Everything that happened since the last view.
   useEffect(() => {
@@ -189,6 +191,14 @@ export default function Game({ driver, houseName, hood, onExit, onSpiral, autopl
           `${view.captains[e.captain].name} can't sail. Refit them in the Harbor and they'll repay you from future voyages.`,
         );
       }
+      if (e.type === "ceded" && me && e.from === me.id) {
+        sound.coins();
+        toast({ kind: "bound", title: "Risk laid off", sub: `${crowns(e.sum)} to ${view.houses[e.to]?.name}` });
+      }
+      if (e.type === "ceded" && me && e.to === me.id) {
+        sound.coins();
+        toast({ kind: "bound", title: "Risk taken on", sub: `${crowns(e.sum)} from ${view.houses[e.from]?.name}` });
+      }
       if (e.type === "fraud" && me && e.house === me.id) {
         sound.coins();
         toast({ kind: "safe", title: "Fraud proven", sub: `Claim void, +${crowns(e.reward)} reward` });
@@ -198,6 +208,17 @@ export default function Game({ driver, houseName, hood, onExit, onSpiral, autopl
       }
     }
     if (lines.length) setTicker((list) => [...lines.reverse(), ...list].slice(0, 6));
+
+    // An offer that lapsed without a taker was priced too low.
+    if (before && me) {
+      const placed = new Set(fresh.flatMap((e) => (e.type === "ceded" ? [e.position] : [])));
+      for (const o of before.offers) {
+        if (o.house !== me.id || placed.has(o.position)) continue;
+        if (!view.offers.some((x) => x.id === o.id) && view.positions.some((p) => p.id === o.position)) {
+          toast({ kind: "plain", title: "No taker", sub: "The Room wanted a better rate" });
+        }
+      }
+    }
 
     if (view.offers.some((o) => me && o.house !== me.id)) {
       note(
@@ -253,7 +274,6 @@ export default function Game({ driver, houseName, hood, onExit, onSpiral, autopl
             setNotes((list) => list.slice(1));
           }
         }
-        if (receipt.result === "inquiry" && !receipt.fraud) sound.stamp();
         return receipt;
       } catch (e) {
         setError(e instanceof Error ? e.message : "That could not be done.");
@@ -332,13 +352,13 @@ export default function Game({ driver, houseName, hood, onExit, onSpiral, autopl
       if (event.key === "2") setLine(5000);
       if (event.key === "3") setLine(10000);
       if (event.key === "Enter" && target.tagName !== "BUTTON") {
-        const slip = view?.slips.find((s) => s.id === selected);
-        if (slip) void act({ kind: "quote", slip: slip.id, rate_bps: slip.offer_bps, line_bps: line });
+        // Press the real button, so the rate on the slider is the rate that signs.
+        document.querySelector<HTMLButtonElement>(".slip-open .primary")?.click();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [practice, pace, setSpeed, view, selected, act, line]);
+  }, [practice, pace, setSpeed]);
 
   const badge = useMemo(() => {
     if (!view || !you) return { book: false, room: false, harbor: false };

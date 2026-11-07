@@ -44,7 +44,7 @@ while (watches < limit) {
   try {
     const outcome = await near
       .transaction(reporter)
-      .functionCall(CONTRACT, "tick", {}, { gas: "60 Tgas" })
+      .functionCall(CONTRACT, "tick", {}, { gas: "80 Tgas" })
       .send({ waitUntil: "EXECUTED_OPTIMISTIC" });
     watches += 1;
     const burnt = outcome.transaction_outcome?.outcome?.gas_burnt ?? 0;

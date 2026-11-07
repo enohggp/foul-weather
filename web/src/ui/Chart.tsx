@@ -421,7 +421,7 @@ export default function Chart({ view, driver, flash }: Props) {
           ctx.stroke();
         }
 
-        const label = curve(lane.id, 0.56, -17);
+        const label = curve(lane.id, 0.44, -17);
         ctx.save();
         ctx.translate(label.x, label.y);
         const tilt = Math.atan2(label.dy, label.dx);

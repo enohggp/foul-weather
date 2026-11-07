@@ -44,7 +44,7 @@ impl World {
         self.weather(&mut r);
         self.ports_tick();
         self.sea_tick(&mut r);
-        self.claims_tick();
+        self.claims_tick(&mut r);
         self.room_tick(&mut r);
         self.slips_tick(&mut r);
         self.captains_tick(&mut r);
@@ -237,6 +237,7 @@ impl World {
                 due,
                 suspicion,
                 inquired: false,
+                inquiry_by: None,
             });
             self.captains[c].state = CaptainState::Ashore { port };
             self.log(Event::ClaimDue { claim: id, captain: v.captain, sum: covered, suspicion });
@@ -343,7 +344,8 @@ impl World {
 
     // ---- claims --------------------------------------------------------------
 
-    fn claims_tick(&mut self) {
+    fn claims_tick(&mut self, r: &mut Rng) {
+        self.resolve_inquiries(r);
         let watch = self.watch;
         let due: Vec<Claim> = self.claims.iter().filter(|c| c.due <= watch).cloned().collect();
         if due.is_empty() {
@@ -432,9 +434,8 @@ impl World {
         }
 
         // Captains paid in full can rebuild. Others wait for someone to refit them.
-        let mut r = Rng::new(self.rng ^ u64::from(watch));
         for claim in &due {
-            self.rebuild(usize::from(claim.captain), &mut r);
+            self.rebuild(usize::from(claim.captain), r);
         }
     }
 
@@ -550,6 +551,7 @@ impl World {
                     .positions
                     .iter()
                     .filter(|p| usize::from(p.writer) == h && usize::from(p.lane) == lane)
+                    .filter(|p| self.voyages.iter().any(|v| v.id == p.voyage))
                     .filter(|p| !self.offers.iter().any(|o| o.position == p.id))
                     .map(|p| (p.id, p.sum.saturating_sub(self.ceded_from(p.id)), p.rate_bps, p.sum))
                     .filter(|(_, free, _, _)| *free > 0)
@@ -638,6 +640,12 @@ impl World {
             .find(|p| p.id == o.position)
             .cloned()
             .ok_or("that risk has gone")?;
+        if !self.voyages.iter().any(|v| v.id == p.voyage) {
+            return Err("that ship is no longer at sea".into());
+        }
+        if self.positions.iter().filter(|q| q.voyage == p.voyage).count() >= MAX_POSITIONS_PER_VOYAGE {
+            return Err("this risk has been split as far as it can go".into());
+        }
         let free = p.sum.saturating_sub(self.ceded_from(p.id));
         let sum = rules::of_bps(p.sum, u64::from(o.share_bps)).min(free);
         if sum == 0 {
@@ -760,6 +768,12 @@ impl World {
             let sum = rules::of_bps(slip.sum_insured, take);
             let premium = rules::of_bps(sum, u64::from(q.rate_bps));
             if premium > budget || sum == 0 {
+                continue;
+            }
+            // Quotes on several slips can add up to more than a house can carry.
+            let h = usize::from(q.house);
+            let limit = self.cash(self.houses[h].acct) * rules::MAX_GEARING;
+            if self.net_book(h) + sum > limit {
                 continue;
             }
             budget -= premium;
@@ -1175,6 +1189,16 @@ impl World {
     }
 
     fn end_season(&mut self) {
+        // Close the books: any ship still out is counted home, and open claims fall due.
+        let mut r = Rng::new(self.rng);
+        while !self.voyages.is_empty() {
+            self.arrive(0, &mut r);
+        }
+        let watch = self.watch;
+        for claim in &mut self.claims {
+            claim.due = watch;
+        }
+        self.claims_tick(&mut r);
         self.log(Event::SeasonEnd { season: self.season });
         for h in 0..self.houses.len() {
             if !self.houses[h].active() {
@@ -1196,29 +1220,22 @@ impl World {
         self.intermission = Some(rules::WATCHES_BETWEEN_SEASONS);
     }
 
-    /// Returns every crown to the Guild and every good to the sea, then begins again.
+    /// Returns every crown to the Guild and every good to the sea, wherever they
+    /// have got to, then begins again.
     pub fn start_next_season(&mut self) {
-        let accounts: Vec<u16> = self
-            .houses
-            .iter()
-            .map(|h| h.acct)
-            .chain(self.captains.iter().map(|c| c.acct))
-            .collect();
-        for acct in accounts {
-            let held = self.ledger.balance(self.crown, acct);
-            self.ledger
-                .transfer(self.crown, acct, self.guild, held)
-                .expect("transferring the exact balance");
-            for good in 0..GOOD_COUNT {
-                let token = self.cargo[good];
-                let goods = self.ledger.balance(token, acct);
-                self.ledger.burn(token, acct, goods).expect("burning the exact balance");
+        let guild = self.guild;
+        for (acct, held) in self.ledger.holders(self.crown) {
+            if acct != guild {
+                self.ledger
+                    .transfer(self.crown, acct, guild, held)
+                    .expect("transferring the exact balance");
             }
         }
         for good in 0..GOOD_COUNT {
             let token = self.cargo[good];
-            let held = self.ledger.balance(token, self.guild);
-            self.ledger.burn(token, self.guild, held).expect("burning the exact balance");
+            for (acct, held) in self.ledger.holders(token) {
+                self.ledger.burn(token, acct, held).expect("burning the exact balance");
+            }
         }
         let positions = core::mem::take(&mut self.positions);
         for p in &positions {
@@ -1226,12 +1243,17 @@ impl World {
         }
         self.captains.clear();
         self.houses.clear();
+        let guild_name = self.ledger.account_name(guild).to_string();
+        self.ledger.forget_empty_accounts();
+        self.guild = self.ledger.account(&guild_name).expect("the guild holds every crown");
         self.slips.clear();
         self.voyages.clear();
         self.offers.clear();
         self.claims.clear();
         self.storms.clear();
         self.history.clear();
+        self.ports = core::array::from_fn(|_| crate::world::Port { stock: [0; GOOD_COUNT] });
+        self.lanes = core::array::from_fn(|_| Lane { sea: 30, drift: 30, report: None, reported_at: 0 });
         self.entrants = 0;
         self.day_premium = 0;
         self.day_sum = 0;

@@ -22,7 +22,7 @@ pub type AccountIx = u16;
 pub type TokenIx = u16;
 
 /// Most groups written into a single NEP-297 log line.
-const GROUPS_PER_LOG: usize = 24;
+const GROUPS_PER_LOG: usize = 8;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum LedgerError {
@@ -47,11 +47,11 @@ impl core::fmt::Display for LedgerError {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum EventKey {
-    Mint { to: AccountIx },
-    Burn { from: AccountIx },
-    Transfer { from: AccountIx, to: AccountIx },
+    Mint { to: String },
+    Burn { from: String },
+    Transfer { from: String, to: String },
 }
 
 #[derive(Clone, Debug, Default, BorshSerialize, BorshDeserialize)]
@@ -61,8 +61,9 @@ pub struct Ledger {
     tokens: Vec<String>,
     supply: Vec<u128>,
     balances: BTreeMap<(TokenIx, AccountIx), u128>,
+    /// Keyed by name, because a token can be retired before its events are logged.
     #[borsh(skip)]
-    events: BTreeMap<(EventKey, TokenIx), u128>,
+    events: BTreeMap<(EventKey, String), u128>,
 }
 
 impl Ledger {
@@ -154,6 +155,18 @@ impl Ledger {
         self.supply[usize::from(token)]
     }
 
+    pub fn account_count(&self) -> usize {
+        self.accounts.len()
+    }
+
+    /// Everyone holding a token, with what they hold.
+    pub fn holders(&self, token: TokenIx) -> Vec<(AccountIx, u128)> {
+        self.balances
+            .range((token, 0)..=(token, AccountIx::MAX))
+            .map(|((_, account), amount)| (*account, *amount))
+            .collect()
+    }
+
     /// First holder of a token. For one-of-a-kind tokens this is the owner.
     pub fn owner_of(&self, token: TokenIx) -> Option<AccountIx> {
         self.balances
@@ -170,6 +183,7 @@ impl Ledger {
         }
         *self.balances.entry((token, to)).or_insert(0) += amount;
         self.supply[usize::from(token)] += amount;
+        let to = self.account_name(to).to_string();
         self.note(EventKey::Mint { to }, token, amount);
     }
 
@@ -179,6 +193,7 @@ impl Ledger {
         }
         self.debit(token, from, amount)?;
         self.supply[usize::from(token)] -= amount;
+        let from = self.account_name(from).to_string();
         self.note(EventKey::Burn { from }, token, amount);
         Ok(())
     }
@@ -195,6 +210,7 @@ impl Ledger {
         }
         self.debit(token, from, amount)?;
         *self.balances.entry((token, to)).or_insert(0) += amount;
+        let (from, to) = (self.account_name(from).to_string(), self.account_name(to).to_string());
         self.note(EventKey::Transfer { from, to }, token, amount);
         Ok(())
     }
@@ -231,6 +247,7 @@ impl Ledger {
         }
         for &(from, to, amount) in payments {
             if amount > 0 && from != to {
+                let (from, to) = (self.account_name(from).to_string(), self.account_name(to).to_string());
                 self.note(EventKey::Transfer { from, to }, token, amount);
             }
         }
@@ -254,7 +271,35 @@ impl Ledger {
     }
 
     fn note(&mut self, key: EventKey, token: TokenIx, amount: u128) {
-        *self.events.entry((key, token)).or_insert(0) += amount;
+        let name = self.token_name(token).to_string();
+        *self.events.entry((key, name)).or_insert(0) += amount;
+    }
+
+    /// Drops every account that holds nothing, so old names can't pile up for ever.
+    /// Account indices change, so re-resolve any index you kept.
+    pub fn forget_empty_accounts(&mut self) {
+        let mut holding = vec![false; self.accounts.len()];
+        for (_, account) in self.balances.keys() {
+            holding[usize::from(*account)] = true;
+        }
+        let mut moved = vec![0 as AccountIx; self.accounts.len()];
+        let mut kept = Vec::new();
+        for (i, name) in core::mem::take(&mut self.accounts).into_iter().enumerate() {
+            if holding[i] {
+                moved[i] = kept.len() as AccountIx;
+                kept.push(name);
+            }
+        }
+        self.accounts = kept;
+        self.balances = core::mem::take(&mut self.balances)
+            .into_iter()
+            .map(|((token, account), amount)| ((token, moved[usize::from(account)]), amount))
+            .collect();
+    }
+
+    /// Forgets buffered activity. For hosts that never write logs, such as a browser.
+    pub fn clear_events(&mut self) {
+        self.events.clear();
     }
 
     // ---- audit and events --------------------------------------------------
@@ -277,33 +322,34 @@ impl Ledger {
     }
 
     /// Drains buffered activity into NEP-297 `EVENT_JSON:` log lines, merging
-    /// repeated movements so one busy step stays within NEAR's log limits.
-    pub fn drain_logs(&mut self, max_lines: usize) -> Vec<String> {
+    /// repeated movements. Output stops at `max_bytes`, because NEAR fails any
+    /// call that logs more than its limit, and a game step must never fail.
+    pub fn drain_logs(&mut self, max_bytes: usize) -> Vec<String> {
         let events = core::mem::take(&mut self.events);
         let mut mints: Vec<serde_json::Value> = Vec::new();
         let mut burns: Vec<serde_json::Value> = Vec::new();
         let mut transfers: Vec<serde_json::Value> = Vec::new();
         for ((key, token), amount) in events {
-            let token_id = serde_json::Value::from(self.token_label(token));
+            let token_id = serde_json::Value::from(token);
             let amounts = serde_json::Value::from(vec![amount.to_string()]);
             let token_ids = serde_json::Value::Array(vec![token_id]);
             let mut entry = serde_json::Map::new();
             match key {
                 EventKey::Mint { to } => {
-                    entry.insert("owner_id".into(), self.account_name(to).into());
+                    entry.insert("owner_id".into(), to.into());
                     entry.insert("token_ids".into(), token_ids);
                     entry.insert("amounts".into(), amounts);
                     mints.push(entry.into());
                 }
                 EventKey::Burn { from } => {
-                    entry.insert("owner_id".into(), self.account_name(from).into());
+                    entry.insert("owner_id".into(), from.into());
                     entry.insert("token_ids".into(), token_ids);
                     entry.insert("amounts".into(), amounts);
                     burns.push(entry.into());
                 }
                 EventKey::Transfer { from, to } => {
-                    entry.insert("old_owner_id".into(), self.account_name(from).into());
-                    entry.insert("new_owner_id".into(), self.account_name(to).into());
+                    entry.insert("old_owner_id".into(), from.into());
+                    entry.insert("new_owner_id".into(), to.into());
                     entry.insert("token_ids".into(), token_ids);
                     entry.insert("amounts".into(), amounts);
                     transfers.push(entry.into());
@@ -311,29 +357,23 @@ impl Ledger {
             }
         }
         let mut lines = Vec::new();
+        let mut used = 0;
         for (event, data) in [("mt_mint", mints), ("mt_burn", burns), ("mt_transfer", transfers)] {
             for chunk in data.chunks(GROUPS_PER_LOG) {
-                if lines.len() >= max_lines {
-                    return lines;
-                }
                 let mut body = serde_json::Map::new();
                 body.insert("standard".into(), "nep245".into());
                 body.insert("version".into(), "1.0.0".into());
                 body.insert("event".into(), event.into());
                 body.insert("data".into(), serde_json::Value::Array(chunk.to_vec()));
-                lines.push(format!("EVENT_JSON:{}", serde_json::Value::Object(body)));
+                let line = format!("EVENT_JSON:{}", serde_json::Value::Object(body));
+                used += line.len();
+                if used > max_bytes {
+                    return lines;
+                }
+                lines.push(line);
             }
         }
         lines
-    }
-
-    fn token_label(&self, token: TokenIx) -> String {
-        let name = self.token_name(token);
-        if name.is_empty() {
-            format!("retired:{token}")
-        } else {
-            name.to_string()
-        }
     }
 }
 
@@ -419,7 +459,7 @@ mod tests {
         l.transfer(t, a, b, 3).unwrap();
         l.transfer(t, a, b, 4).unwrap();
         l.burn(t, b, 1).unwrap();
-        let logs = l.drain_logs(8);
+        let logs = l.drain_logs(16_000);
         assert_eq!(logs.len(), 3);
         let parsed: Vec<serde_json::Value> = logs
             .iter()
@@ -433,7 +473,57 @@ mod tests {
         assert_eq!(parsed[2]["data"][0]["old_owner_id"], "a.near");
         assert_eq!(parsed[2]["data"][0]["new_owner_id"], "b.near");
         assert_eq!(parsed[2]["data"][0]["amounts"][0], "7", "repeat transfers are merged");
-        assert!(l.drain_logs(8).is_empty());
+        assert!(l.drain_logs(16_000).is_empty());
+    }
+
+    #[test]
+    fn logs_never_exceed_the_byte_budget() {
+        let mut l = Ledger::new();
+        let a = l.account("a.near").unwrap();
+        for i in 0..400 {
+            let t = l.token(&format!("policy:{i}")).unwrap();
+            l.mint(t, a, 1);
+        }
+        let logs = l.drain_logs(4_000);
+        let total: usize = logs.iter().map(String::len).sum();
+        assert!(total <= 4_000, "{total} bytes");
+        assert!(!logs.is_empty());
+    }
+
+    #[test]
+    fn a_retired_token_is_logged_under_its_own_name() {
+        let (mut l, _, a, _, _) = fixture();
+        let p = l.token("policy:9").unwrap();
+        l.mint(p, a, 5);
+        l.burn(p, a, 5).unwrap();
+        l.retire_token(p);
+        let q = l.token("policy:10").unwrap();
+        assert_eq!(p, q, "the slot is reused");
+        let logs = l.drain_logs(16_000).join("\n");
+        assert!(logs.contains("policy:9"));
+        assert!(!logs.contains("policy:10"));
+    }
+
+    #[test]
+    fn forgetting_empty_accounts_keeps_every_balance() {
+        let (mut l, t, a, b, c) = fixture();
+        l.mint(t, a, 3);
+        l.mint(t, c, 9);
+        let _ = b;
+        l.forget_empty_accounts();
+        assert_eq!(l.account_count(), 2);
+        assert_eq!(l.find_account("b.near"), None);
+        assert_eq!(l.balance_of("crown", "a.near"), 3);
+        assert_eq!(l.balance_of("crown", "c.near"), 9);
+        l.audit().unwrap();
+    }
+
+    #[test]
+    fn holders_lists_every_balance() {
+        let (mut l, t, a, b, _) = fixture();
+        l.mint(t, a, 3);
+        l.mint(t, b, 4);
+        assert_eq!(l.holders(t), vec![(a, 3), (b, 4)]);
     }
 
     #[test]

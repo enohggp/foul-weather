@@ -39,8 +39,9 @@ pub const WEEKS_PER_SEASON: u32 = 4;
 pub const WATCHES_PER_WEEK: u32 = WATCHES_PER_DAY * DAYS_PER_WEEK;
 pub const WATCHES_PER_SEASON: u32 = WATCHES_PER_WEEK * WEEKS_PER_SEASON;
 
-/// No new voyages this close to the end, so every ship is home for the books.
-pub const LAST_SAILING_BEFORE_END: u32 = 12;
+/// No new voyages this close to the end: two rounds of bidding plus the longest
+/// crossing, so every ship is home and every claim settled when the books close.
+pub const LAST_SAILING_BEFORE_END: u32 = 18;
 /// Watches between one season's end and the next season's start in a live world.
 pub const WATCHES_BETWEEN_SEASONS: u32 = 18;
 
@@ -116,7 +117,7 @@ pub fn port_stock_rule(port: usize, good: usize) -> (u32, i32) {
     } else if PORTS[port].makes == good {
         (240, 5)
     } else if good == WARES {
-        (90, -5)
+        (180, -5)
     } else {
         (0, 0)
     }
@@ -203,6 +204,11 @@ pub const REST_WATCHES: u32 = 2;
 /// Share of a voyage's expected profit a free-spending captain gives up for cover.
 pub const GIVES_UP_BASE_PCT: u64 = 30;
 
+/// Share of expected profit this captain will spend on cover.
+pub fn gives_up_pct(thrift: u8) -> u64 {
+    GIVES_UP_BASE_PCT - u64::from(thrift) / 4
+}
+
 pub fn hull_value(capacity: u32) -> u64 {
     700 + u64::from(capacity) * 6
 }
@@ -225,8 +231,7 @@ pub struct OfferInputs {
 /// and why spotting that is the underwriter's whole job.
 pub fn captain_offer_bps(i: &OfferInputs) -> u16 {
     let profit = i.revenue.saturating_sub(i.cargo_cost + i.provisions);
-    let share_pct = GIVES_UP_BASE_PCT - u64::from(i.thrift) / 4;
-    let offer = (profit * share_pct / 100) * BPS / i.sum_insured.max(1);
+    let offer = (profit * gives_up_pct(i.thrift) / 100) * BPS / i.sum_insured.max(1);
     offer.clamp(140, 1_800) as u16
 }
 

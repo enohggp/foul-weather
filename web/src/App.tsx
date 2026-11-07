@@ -9,7 +9,7 @@ import { Title, type TitleChoice } from "./ui/Overlays";
 import type { Hood } from "./ui/Side";
 
 /** A fixed season that always ends in a chain of failures. See scripts/find-spiral.mjs. */
-const SPIRAL = { seed: 219, preRoll: 60 };
+const SPIRAL = { seed: 573, preRoll: 60 };
 const SEA_EVERY_MS = 45_000;
 
 interface Session {

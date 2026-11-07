@@ -266,8 +266,7 @@ export type Action =
 export type Receipt =
   | { result: "done" }
   | { result: "founded"; capital: number }
-  | { result: "surveyed"; hull: number }
-  | { result: "inquiry"; fraud: boolean; reward: number };
+  | { result: "surveyed"; hull: number };
 
 export interface Driver {
   readonly mode: "practice" | "live";

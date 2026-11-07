@@ -4,7 +4,9 @@ The chain does work here that a game server could not be trusted to do. A player
 
 ## No server
 
-One contract holds the rules, the world and every token. `tick` is public, so any player's browser moves the world on. A watch costs about 4 Tgas, because the whole world is one compact state of about 11 KB.
+One contract holds the rules, the world and every token. `tick` is public, so any player's browser moves the world on. A watch costs 4 to 6 Tgas, because the whole world is one compact state of about 11 KB.
+
+The watch runs in its own receipt, with fresh randomness from a later block and a fixed 60 Tgas of its own. If it ran inside `tick`, a caller could batch it with a check that fails when their own ship sinks, undo the transaction and roll again. With less gas, a caller could make costly outcomes run out and revert. Inquiries report at the next watch for the same reason.
 
 The browser runs the same rules through WebAssembly, compiled from the same Rust crate (`crates/core`). Practice mode and fast-forward are therefore the contract's real rules, not an imitation of them.
 
@@ -24,7 +26,9 @@ The contract's owner can still restart the world with `reset` and could redeploy
 | `cargo:grain`, `cargo:silk` and others | Goods, minted when produced and burned when consumed. |
 | `policy:<id>` | One promise to pay, held by whoever is owed. |
 
-A policy is a real token. Whoever holds it collects on it, so a claim can be sold with `mt_transfer`. Core methods and enumeration are implemented, with `mt_transfer_call` and NEP-297 events.
+A policy is a real token. Whoever holds it collects on it, so a claim can be sold to another house with `mt_transfer`, whole or not at all. Crowns and cargo move only under the game's rules, because a house that could move its crowns could empty itself just before a claim fell due.
+
+Core methods and enumeration are implemented, with `mt_transfer_call` and NEP-297 events. NEAR fails any call that logs more than 16 KB, so the busiest watches leave their last events out of the logs. The state is always complete.
 
 The ledger lives in [`crates/nep245-ledger`](../crates/nep245-ledger), a small reusable crate with no SDK dependency. NEAR's standards library has no NEP-245 implementation, so this is useful to other builders.
 
@@ -48,7 +52,9 @@ When several houses owe each other at once, there is no fair order of payment. `
 | Guest | The browser makes a key. A testnet account opens through NEAR's public faucet, or through the contract's front door if the faucet is busy. |
 | Google or email | NEAR Auth logs the player in and derives a key held by NEAR's MPC network. That key owns the account, and a limited key on the device plays the game. |
 
-The **front door** is a function-call key that is public on purpose and published by the contract through `front_door()`. NEAR itself limits it to calling `open_account`, and the contract caps it at 40 accounts an hour. It uses the same idea as NEAR linkdrops, and no server is needed.
+The **front door** is a function-call key that is public on purpose and published by the contract through `front_door()`. NEAR itself limits it to calling `open_account`, and the contract caps it at 40 accounts an hour. It uses the same idea as NEAR linkdrops, and no server is needed. A second public key, from `tick_key()`, can only call `tick`, so a long session doesn't use up a player's own gas. If its allowance runs out, players' own keys take over.
+
+Anyone can read that key, so anyone can use the front door until it hits its hourly cap or its balance floor. On testnet the worst case is that it closes for a while and new players fall back to the faucet.
 
 New players get a key that can call only this contract, so even a stolen browser key can't move their testnet NEAR.
 

@@ -185,6 +185,8 @@ pub struct Claim {
     /// Chance, in percent, that the wreck was no accident.
     pub suspicion: u8,
     pub inquired: bool,
+    /// A house waiting for its inquiry to report at the next watch.
+    pub inquiry_by: Option<u16>,
 }
 
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize)]

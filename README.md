@@ -11,6 +11,7 @@ Built at NEAR HACKATHON (1 to 14 November 2026). Track: **Games With Real Econom
 | | |
 | --- | --- |
 | Contract (NEAR testnet) | [`foulweather-harbor.testnet`](https://testnet.nearblocks.io/address/foulweather-harbor.testnet) |
+| Demo video, 2 minutes, captions, no sound | [`docs/demo/foul-weather-demo.mp4`](docs/demo/foul-weather-demo.mp4) |
 | Rulebook, every price and decision in one file | [`crates/core/src/rules.rs`](crates/core/src/rules.rs) |
 | The loop on paper | [`docs/GAME_LOOP.md`](docs/GAME_LOOP.md) |
 | How NEAR is used | [`docs/NEAR.md`](docs/NEAR.md) |
@@ -73,7 +74,7 @@ cargo test -p nep245-ledger -p foul-core -p foul-engine-wasm
 node scripts/e2e-contract.mjs
 ```
 
-The first command runs 46 tests, including a full-season audit on every watch: every balance adds up to supply, and no crown is ever created or destroyed. The second runs real transactions against the deployed contract.
+The first command runs 62 tests. They include a full-season audit on every watch, so every balance adds up to supply and no crown is ever created or destroyed, plus regression tests for the attacks found in code review ([`crates/core/tests/exploits.rs`](crates/core/tests/exploits.rs)). The second runs real transactions against the deployed contract.
 
 To see how the economy behaves over many seasons:
 
@@ -92,14 +93,21 @@ node scripts/agent-house.mjs
 
 That is a complete underwriting house in about 100 lines. It opens its own account, founds a house marked as an agent, and signs slips through the contract's public methods. Set `NEAR_AI_API_KEY` and it asks a model on NEAR AI Cloud instead of using rules. Rewrite its `byRule` function and your agent is competing in the same Room as everyone else.
 
+## What it looks like
+
+| | |
+| --- | --- |
+| ![A captain's slip with their reasoning](docs/shots/slip.jpg) | ![Your book at sea](docs/shots/desk.jpg) |
+| ![The Room as a great storm comes](docs/shots/room.jpg) | ![The list of houses that fell](docs/shots/collapse.jpg) |
+
 ## How it fits the track
 
 | The track asks for | Foul Weather |
 | --- | --- |
 | NPCs with wallets | 12 captains and 6 Room houses, each with a NEAR sub-account that has no key at all. Only the rules can move their money. |
-| Player-owned markets | Players trade risk with each other and the Room through reinsurance offers. Policies are tokens, so claims can be sold. |
+| Player-owned markets | Players trade risk with each other and the Room through reinsurance offers. Policies are NEP-245 tokens, so a claim can be sold. |
 | Economies that evolve without a dev patch | Premiums, sailings, goods prices and new capital feed each other, and live NEAR Intents quotes set the sea. |
-| Judged on the game loop | See [`docs/GAME_LOOP.md`](docs/GAME_LOOP.md). In 600 simulated seasons, signing everything fails about two times in three and careful play doubles the money. |
+| Judged on the game loop | See [`docs/GAME_LOOP.md`](docs/GAME_LOOP.md). In 900 seasons played by bots, signing everything failed 54% to 72% of the time, and careful play more than doubled the money. |
 | Players never notice the chain | No wallet, seed phrase or gas prompt in normal play. |
 
 The track's starter prompt asks for these too:
@@ -123,7 +131,7 @@ web/                   React client. All NEAR calls are in web/src/live.ts.
 scripts/               Deploy helpers, keeper, verification, agent house.
 ```
 
-`tick` is public, so players' browsers move the world on. A watch costs about 4 Tgas, because the whole world fits in about 11 KB of state.
+`tick` is public, so players' browsers move the world on. A watch costs 4 to 6 Tgas, because the whole world fits in about 11 KB of state.
 
 To rebuild from source you need Rust and [`cargo-near`](https://github.com/near/cargo-near):
 
@@ -142,6 +150,8 @@ cp target/wasm32-unknown-unknown/release/foul_engine_wasm.wasm web/public/engine
 - **Surveys are private in the page, not on-chain.** See [`docs/NEAR.md`](docs/NEAR.md).
 - **Pay from any chain is a preview.** Quotes are live, but nothing can be bought.
 - **The owner can reset the world** while this is a hackathon build.
+- **Two houses run by one person can pass money between them** through reinsurance at high rates, or by selling a recovery. Crowns are game points, so this only affects the leaderboard.
+- **The busiest watches can leave their last events out of the logs**, because NEAR limits log size. The state is always complete.
 - **Practice and fast-forward run in the browser**, using the contract's rules but no transactions. A season on-chain plays in real time.
 
 ## License

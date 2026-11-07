@@ -312,7 +312,7 @@ impl World {
         let profit = s.revenue as i64 - s.cargo_cost as i64 - s.provisions as i64;
         let mut reasons = vec![
             Reason { code: "profit", value: profit },
-            Reason { code: "gives_up_pct", value: 75 - i64::from(def.thrift) / 2 },
+            Reason { code: "gives_up_pct", value: rules::gives_up_pct(def.thrift) as i64 },
         ];
         if s.qty > 0 {
             let dest = if s.outbound { LANES[usize::from(s.lane)].port } else { HUB };

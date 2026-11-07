@@ -6,9 +6,24 @@
 // exercises NEP-245: balances, supply, a transfer, and the events it logs.
 
 import { generateKey, Near } from "near-kit";
-import { CONTRACT, network, reader, sleep } from "./lib.mjs";
+import { CONTRACT, LATEST, network, reader, sleep } from "./lib.mjs";
 
 const results = [];
+// A caller must not be able to starve the watch of gas and reroll a bad outcome.
+async function near0Tick() {
+  const tickKey = await reader().view(CONTRACT, "tick_key", {}, LATEST);
+  const near = new Near({ network, privateKey: tickKey, defaultSignerId: CONTRACT });
+  await sleep(7500);
+  const before = await near.view(CONTRACT, "status", {}, LATEST);
+  await near
+    .transaction(CONTRACT)
+    .functionCall(CONTRACT, "tick", {}, { gas: "20 Tgas" })
+    .send({ waitUntil: "EXECUTED_OPTIMISTIC" })
+    .catch(() => null);
+  await sleep(2500);
+  const after = await near.view(CONTRACT, "status", {}, LATEST);
+  return before.watch === after.watch;
+}
 const check = (name, ok, detail = "") => {
   results.push(ok);
   console.log(`${ok ? "ok  " : "FAIL"} ${name}${detail ? `  (${detail})` : ""}`);
@@ -37,6 +52,9 @@ const misuse = await gate
   .catch(() => true);
 check("the front-door key cannot call other methods", misuse);
 
+const shortTick = await near0Tick();
+check("a tick with too little gas fails before the watch runs", shortTick);
+
 const near = new Near({ network, privateKey: key.secretKey, defaultSignerId: player });
 const send = (method, args) =>
   near.transaction(player).functionCall(CONTRACT, method, args, { gas: "40 Tgas" }).send({ waitUntil: "EXECUTED_OPTIMISTIC" });
@@ -56,7 +74,7 @@ for (let i = 0; i < 40 && !signed; i++) {
     const outcome = await send("quote", { slip: slip.id, rate_bps: slip.offer_bps, line_bps: 2500 }).catch(() => null);
     signed = Boolean(outcome);
   } else {
-    await send("tick", {}).catch(() => null);
+    await near.transaction(player).functionCall(CONTRACT, "tick", {}, { gas: "80 Tgas" }).send({ waitUntil: "EXECUTED_OPTIMISTIC" }).catch(() => null);
     await sleep(3000);
   }
 }

@@ -109,6 +109,7 @@ export function eventLine(e: GameEvent, view: View): Line | null {
         tone: "bad",
       };
     case "claim_paid":
+      if (e.sum === 0) return { text: `The cover on ${shipOf(view, e.captain)} died with its house. Nothing was paid.`, tone: "bad" };
       return e.paid >= e.sum
         ? { text: `Claim on ${shipOf(view, e.captain)} paid in full: ${crowns(e.paid)}.`, tone: "plain" }
         : { text: `Claim on ${shipOf(view, e.captain)} paid short: ${crowns(e.paid)} of ${crowns(e.sum)}.`, tone: "bad" };

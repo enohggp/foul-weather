@@ -14,9 +14,9 @@ const ACCOUNT_HELPER = "https://helper.nearprotocol.com/account";
 const STORE_KEY = "fw-live-account";
 const POLL_MS = 2500;
 // Prepaid gas is reserved from the key's allowance at 0.001 NEAR per Tgas, so keep
-// this close to what a call really burns. A watch costs about 4 Tgas.
+// this close to what a call really burns. A watch costs about 6 Tgas.
 const ACTION_GAS = "40 Tgas";
-const TICK_GAS = "40 Tgas";
+const TICK_GAS = "80 Tgas";
 const network = { networkId: "testnet", rpcUrl: RPC };
 const LATEST = { finality: "optimistic" } as const;
 
@@ -84,6 +84,15 @@ async function viaFrontDoor(publicKey: string, identity?: string): Promise<strin
   return value ? (JSON.parse(atob(value)) as string) : null;
 }
 
+async function hasKey(accountId: string, publicKey: string): Promise<boolean> {
+  const reader = new Near({ network });
+  const rpc = (reader as unknown as { rpc: { getAccessKey(a: string, k: string): Promise<unknown> } }).rpc;
+  return rpc.getAccessKey(accountId, publicKey).then(
+    () => true,
+    () => false,
+  );
+}
+
 /** Creates a fresh testnet account. The player never sees any of this. */
 async function createAccount(identity?: string): Promise<Saved> {
   const key = generateKey();
@@ -98,12 +107,16 @@ async function createAccount(identity?: string): Promise<Saved> {
         : "The Room could not open an account right now. Try practice mode.",
     );
   }
-  const reader = new Near({ network });
+  // The opening runs a moment after the call, and it can fail if the name is taken.
   for (let i = 0; i < 20; i++) {
-    if (await reader.accountExists(accountId)) return { accountId, secretKey: key.secretKey };
+    if (await hasKey(accountId, publicKey)) return { accountId, secretKey: key.secretKey };
     await new Promise((resolve) => setTimeout(resolve, 700));
   }
-  throw new Error("The new account did not appear in time. Please try again.");
+  throw new Error(
+    identity
+      ? "This login may already have a house on another device. Open it there, or join as a guest here."
+      : "The new account did not appear in time. Please try again.",
+  );
 }
 
 function plainError(error: unknown): string {
@@ -145,6 +158,8 @@ export class LiveDriver implements Driver {
   private lastSeq = "";
   private polling = false;
   private houseName: string;
+  /** The contract's public tick key pays for ticks, so they don't drain the player. */
+  private ticker: Near | null = null;
   /** Hash of the player's latest transaction, for the "Under the hood" panel. */
   onTransaction: ((hash: string) => void) | null = null;
 
@@ -174,6 +189,8 @@ export class LiveDriver implements Driver {
     await driver.refresh();
     if (!driver.view) throw new Error("The Room is not answering. Try practice mode.");
     await driver.ensureHouse();
+    const key = await near.view<string>(CONTRACT, "tick_key", {}, LATEST).catch(() => null);
+    if (key) driver.ticker = new Near({ network, privateKey: key as `ed25519:${string}`, defaultSignerId: CONTRACT });
     driver.schedule();
     return driver;
   }
@@ -238,7 +255,7 @@ export class LiveDriver implements Driver {
         const due = Number(status.next_tick_ms) + Math.random() * 1500;
         if (Date.now() >= due && !this.ticking) {
           this.ticking = true;
-          void this.send("tick", {}, TICK_GAS)
+          void this.tick()
             .catch(() => undefined)
             .finally(() => {
               this.ticking = false;
@@ -251,6 +268,21 @@ export class LiveDriver implements Driver {
       this.polling = false;
       this.schedule();
     }
+  }
+
+  private async tick() {
+    if (this.ticker) {
+      const paid = await this.ticker
+        .transaction(CONTRACT)
+        .functionCall(CONTRACT, "tick", {}, { gas: TICK_GAS })
+        .send({ waitUntil: "EXECUTED_OPTIMISTIC" })
+        .then(
+          () => true,
+          () => false,
+        );
+      if (paid) return;
+    }
+    await this.send("tick", {}, TICK_GAS);
   }
 
   subscribe(listener: (view: View) => void) {

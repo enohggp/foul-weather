@@ -38,7 +38,6 @@ pub enum Receipt {
     Done,
     Founded { capital: u64 },
     Surveyed { hull: u8 },
-    Inquiry { fraud: bool, reward: u64 },
 }
 
 impl World {
@@ -55,7 +54,7 @@ impl World {
                 self.offer_cession(who, position, share_bps, rate_bps)
             }
             Action::TakeCession { offer } => self.take_cession(who, offer),
-            Action::Inquiry { claim } => self.inquiry(who, claim, entropy),
+            Action::Inquiry { claim } => self.inquiry(who, claim),
             Action::Refit { captain } => {
                 let h = self.active_house(who)?;
                 let c = usize::from(captain);
@@ -199,6 +198,9 @@ impl World {
         if usize::from(p.writer) != h {
             return Err("that risk is not yours to pass on".into());
         }
+        if !self.voyages.iter().any(|v| v.id == p.voyage) {
+            return Err("that ship is no longer at sea".into());
+        }
         if !(500..=10_000).contains(&share_bps) {
             return Err("offer between 5% and 100% of the risk".into());
         }
@@ -244,7 +246,9 @@ impl World {
         Ok(Receipt::Done)
     }
 
-    fn inquiry(&mut self, who: &str, claim: u32, entropy: &[u8; 32]) -> Result<Receipt, String> {
+    /// Pays for an inquiry. Its finding comes at the next watch, in a separate
+    /// step, so nobody can undo the transaction if they dislike the answer.
+    fn inquiry(&mut self, who: &str, claim: u32) -> Result<Receipt, String> {
         let h = self.active_house(who)?;
         let ix = self.claims.iter().position(|c| c.id == claim).ok_or("that claim has been settled")?;
         let c = self.claims[ix].clone();
@@ -258,46 +262,82 @@ impl World {
         self.ledger
             .transfer(self.crown, acct, self.guild, u128::from(rules::INQUIRY_FEE))
             .map_err(|_| "you cannot afford an inquiry".to_string())?;
+        self.claims[ix].inquired = true;
+        self.claims[ix].inquiry_by = Some(h as u16);
+        Ok(Receipt::Done)
+    }
 
-        // The truth is not stored anywhere. It is decided here, by fresh
-        // randomness, at exactly the odds the harbor could see.
-        let mut r = Rng::from_entropy(self.rng, entropy);
-        let fraud = r.below(100) < u64::from(c.suspicion);
-        if !fraud {
-            self.claims[ix].inquired = true;
-            let house = &mut self.houses[h];
-            house.reputation = house.reputation.saturating_sub(4);
-            self.log(Event::HonestLoss { claim: c.id, captain: c.captain, house: h as u16 });
-            return Ok(Receipt::Inquiry { fraud: false, reward: 0 });
-        }
+    /// Reports on every inquiry waiting for a finding.
+    pub(crate) fn resolve_inquiries(&mut self, r: &mut Rng) {
+        let waiting: Vec<(u32, u16)> = self
+            .claims
+            .iter()
+            .filter_map(|c| c.inquiry_by.map(|house| (c.id, house)))
+            .collect();
+        for (id, house) in waiting {
+            let Some(ix) = self.claims.iter().position(|c| c.id == id) else { continue };
+            let c = self.claims[ix].clone();
+            self.claims[ix].inquiry_by = None;
+            let h = usize::from(house);
 
-        // Proven fraud: the claim dies, and the captain's money pays the reward.
-        self.claims.remove(ix);
-        let mut i = 0;
-        while i < self.positions.len() {
-            if self.positions[i].voyage == c.voyage {
-                let p = self.positions.remove(i);
-                self.burn_policy(&p);
-            } else {
-                i += 1;
+            // The truth is not stored anywhere. It is decided here, by fresh
+            // randomness, at exactly the odds the harbor could see.
+            if r.below(100) >= u64::from(c.suspicion) {
+                let name = &mut self.houses[h];
+                name.reputation = name.reputation.saturating_sub(4);
+                self.log(Event::HonestLoss { claim: c.id, captain: c.captain, house });
+                continue;
             }
+
+            // Proven fraud: the claim dies, and the captain's money pays the reward.
+            self.claims.remove(ix);
+            let mut i = 0;
+            while i < self.positions.len() {
+                if self.positions[i].voyage == c.voyage {
+                    let p = self.positions.remove(i);
+                    self.burn_policy(&p);
+                } else {
+                    i += 1;
+                }
+            }
+            let live: Vec<u32> = self.positions.iter().map(|p| p.id).collect();
+            self.offers.retain(|o| live.contains(&o.position));
+            let captain = usize::from(c.captain);
+            let wallet = self.captains[captain].acct;
+            let reward = (c.sum * rules::FRAUD_REWARD_PCT / 100).min(self.cash(wallet));
+            self.ledger
+                .transfer(self.crown, wallet, self.houses[h].acct, u128::from(reward))
+                .expect("the reward was capped at the captain's cash");
+            self.captains[captain].frauds += 1;
+            if let CaptainState::Ashore { port } = self.captains[captain].state {
+                self.captains[captain].state = CaptainState::LaidUp { port, since: self.watch };
+            }
+            let name = &mut self.houses[h];
+            name.reputation = (name.reputation + 3).min(100);
+            self.log(Event::Fraud { claim: c.id, captain: c.captain, house, reward });
         }
-        let live: Vec<u32> = self.positions.iter().map(|p| p.id).collect();
-        self.offers.retain(|o| live.contains(&o.position));
-        let captain = usize::from(c.captain);
-        let wallet = self.captains[captain].acct;
-        let reward = (c.sum * rules::FRAUD_REWARD_PCT / 100).min(self.cash(wallet));
-        self.ledger
-            .transfer(self.crown, wallet, acct, u128::from(reward))
-            .map_err(|e| e.to_string())?;
-        self.captains[captain].frauds += 1;
-        if let CaptainState::Ashore { port } = self.captains[captain].state {
-            self.captains[captain].state = CaptainState::LaidUp { port, since: self.watch };
+    }
+
+    /// The NEP-245 transfer rule. A policy is a claim, and a claim can be sold to
+    /// another house, but only whole: a split claim has no single holder to pay.
+    /// Crowns and cargo are never transferable, or a house could empty itself just
+    /// before a claim fell due.
+    pub fn transfer_token(&mut self, from: &str, to: &str, token: &str, amount: u128) -> Result<(), String> {
+        if !token.starts_with("policy:") {
+            return Err("crowns and cargo only move under the rules of the game".into());
         }
-        let house = &mut self.houses[h];
-        house.reputation = (house.reputation + 3).min(100);
-        self.log(Event::Fraud { claim: c.id, captain: c.captain, house: h as u16, reward });
-        Ok(Receipt::Inquiry { fraud: true, reward })
+        let t = self.ledger.find_token(token).ok_or("no such token")?;
+        let sender = self.ledger.find_account(from).ok_or("the sender holds nothing here")?;
+        let held = self.ledger.balance(t, sender);
+        if held == 0 {
+            return Err("the sender does not hold that policy".into());
+        }
+        if amount != held {
+            return Err("a policy moves whole or not at all".into());
+        }
+        // Only names the ledger already knows, so transfers can't grow it without limit.
+        let receiver = self.ledger.find_account(to).ok_or("the receiver has no house in the Room")?;
+        self.ledger.transfer(t, sender, receiver, amount).map_err(|e| e.to_string())
     }
 
     /// Posts live sea readings, one per lane. Only a trusted reporter may call this;

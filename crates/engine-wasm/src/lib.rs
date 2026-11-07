@@ -97,10 +97,12 @@ fn run(command: Command) -> Result<Value, String> {
                 e[31] = e[31].wrapping_add(i as u8);
                 world.step(&e);
             }
+            world.ledger.clear_events();
             Ok(view_of(world))
         }
         Command::Act { action, entropy } => {
             let receipt = world.act(YOU, action, &entropy32(&entropy))?;
+            world.ledger.clear_events();
             Ok(json!({ "receipt": receipt, "view": view_of(world) }))
         }
         Command::View => Ok(view_of(world)),

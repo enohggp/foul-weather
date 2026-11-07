@@ -19,7 +19,8 @@ pub struct Debt {
     pub amount: u64,
 }
 
-const MAX_ROUNDS: usize = 48;
+/// Each round is a single pass over the debts, so this is cheap even at 256.
+const MAX_ROUNDS: usize = 256;
 
 /// The outcome of clearing a batch of debts.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -32,84 +33,87 @@ pub struct Cleared {
     pub rounds: usize,
 }
 
-fn owed_on(debt: &Debt, total_due: u64, total_pay: u64) -> u64 {
+fn share(amount: u64, total_due: u64, total_pay: u64) -> u64 {
     if total_due == 0 {
         return 0;
     }
-    (u128::from(debt.amount) * u128::from(total_pay) / u128::from(total_due)) as u64
+    (u128::from(amount) * u128::from(total_pay) / u128::from(total_due)) as u64
+}
+
+struct Edge {
+    debtor: usize,
+    creditor: usize,
+    amount: u64,
+}
+
+fn inflows(edges: &[Edge], due: &[u64], pay: &[u64]) -> Vec<u64> {
+    let mut inflow = vec![0u64; due.len()];
+    for e in edges {
+        let paid = share(e.amount, due[e.debtor], pay[e.debtor]);
+        inflow[e.creditor] = inflow[e.creditor].saturating_add(paid);
+    }
+    inflow
 }
 
 /// Clears `debts` given each party's cash on hand.
 ///
 /// `cash` is looked up by party; a party not in the map has nothing.
 pub fn clear(debts: &[Debt], cash: &BTreeMap<u16, u64>) -> Cleared {
-    let mut due: BTreeMap<u16, u64> = BTreeMap::new();
-    for d in debts {
-        *due.entry(d.debtor).or_insert(0) += d.amount;
+    let mut parties: Vec<u16> = debts.iter().flat_map(|d| [d.debtor, d.creditor]).collect();
+    parties.sort_unstable();
+    parties.dedup();
+    let index = |party: u16| parties.binary_search(&party).unwrap_or(0);
+
+    let edges: Vec<Edge> = debts
+        .iter()
+        .map(|d| Edge { debtor: index(d.debtor), creditor: index(d.creditor), amount: d.amount })
+        .collect();
+    let held: Vec<u64> = parties.iter().map(|p| cash.get(p).copied().unwrap_or(0)).collect();
+    let mut due = vec![0u64; parties.len()];
+    for e in &edges {
+        due[e.debtor] = due[e.debtor].saturating_add(e.amount);
     }
 
     // Start by assuming everyone pays in full, then lower payments until they
     // are consistent. This reaches the largest clearing vector.
     let mut pay = due.clone();
     let mut rounds = 0;
+    let mut settled = false;
     for _ in 0..MAX_ROUNDS {
         rounds += 1;
-        let mut inflow: BTreeMap<u16, u64> = BTreeMap::new();
-        for d in debts {
-            let total_due = due[&d.debtor];
-            let paid = owed_on(d, total_due, pay[&d.debtor]);
-            *inflow.entry(d.creditor).or_insert(0) += paid;
-        }
+        let inflow = inflows(&edges, &due, &pay);
         let mut changed = false;
-        for (party, owed) in &due {
-            let available = cash.get(party).copied().unwrap_or(0)
-                + inflow.get(party).copied().unwrap_or(0);
-            let next = (*owed).min(available);
-            if next < pay[party] {
-                pay.insert(*party, next);
+        for i in 0..pay.len() {
+            let next = due[i].min(held[i].saturating_add(inflow[i]));
+            if next < pay[i] {
+                pay[i] = next;
                 changed = true;
             }
         }
         if !changed {
+            settled = true;
             break;
         }
     }
 
-    // If the rounds ran out, fall back to what each party can pay from its own
-    // cash. This can only lower payments, so no account can end up overdrawn.
-    let settled = is_consistent(debts, cash, &due, &pay);
+    // A deliberately slow ring can outlast the rounds. Fall back to what each
+    // party can pay from its own cash, which can never overdraw an account.
     if !settled {
-        for (party, amount) in pay.iter_mut() {
-            *amount = (*amount).min(cash.get(party).copied().unwrap_or(0));
+        let inflow = inflows(&edges, &due, &pay);
+        let consistent = (0..pay.len()).all(|i| pay[i] <= held[i].saturating_add(inflow[i]));
+        if !consistent {
+            for i in 0..pay.len() {
+                pay[i] = pay[i].min(held[i]);
+            }
         }
     }
 
-    let paid = debts
-        .iter()
-        .map(|d| owed_on(d, due[&d.debtor], pay[&d.debtor]))
-        .collect();
-    let defaulted = due
-        .iter()
-        .filter(|(party, owed)| pay[party] < **owed)
-        .map(|(party, _)| *party)
+    let paid = edges.iter().map(|e| share(e.amount, due[e.debtor], pay[e.debtor])).collect();
+    let defaulted = (0..pay.len())
+        .filter(|&i| pay[i] < due[i])
+        .map(|i| parties[i])
         .collect();
     Cleared { paid, defaulted, rounds }
-}
-
-fn is_consistent(
-    debts: &[Debt],
-    cash: &BTreeMap<u16, u64>,
-    due: &BTreeMap<u16, u64>,
-    pay: &BTreeMap<u16, u64>,
-) -> bool {
-    let mut inflow: BTreeMap<u16, u64> = BTreeMap::new();
-    for d in debts {
-        *inflow.entry(d.creditor).or_insert(0) += owed_on(d, due[&d.debtor], pay[&d.debtor]);
-    }
-    due.keys().all(|party| {
-        pay[party]
-            <= cash.get(party).copied().unwrap_or(0) + inflow.get(party).copied().unwrap_or(0)
-    })
 }
 
 #[cfg(test)]
@@ -177,6 +181,22 @@ mod tests {
         assert_eq!(r.defaulted, vec![1, 2, 3]);
         let paid_out: u64 = r.paid[3];
         assert!(paid_out <= 300, "only real cash can reach the outside creditor");
+    }
+
+    #[test]
+    fn a_slow_ring_does_not_default_an_honest_house_that_relies_on_it() {
+        // Most of each debt circles the ring. House 5 is owed by the ring and
+        // must not be treated as insolvent just because clearing takes many rounds.
+        let debts = [
+            debt(1, 2, 10_000),
+            debt(2, 3, 10_000),
+            debt(3, 1, 10_000),
+            debt(1, 5, 120),
+            debt(5, 9, 100),
+        ];
+        let r = clear(&debts, &cash(&[(1, 400), (5, 40)]));
+        assert!(r.rounds < MAX_ROUNDS, "took {} rounds", r.rounds);
+        assert!(!r.defaulted.contains(&5), "house 5 was paid enough to meet its debt");
     }
 
     #[test]

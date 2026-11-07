@@ -16,9 +16,13 @@ use near_sdk::{
 /// Watches a single `tick` may run after a quiet spell. Beyond this the world
 /// has simply been asleep, so nothing is owed to it.
 const MAX_CATCH_UP: u64 = 3;
-const MAX_LOG_LINES: usize = 12;
+/// NEAR fails a call that logs more than 16,384 bytes, so stay well under it.
+/// In the busiest steps the last events are left out; the state is always right.
+const MAX_LOG_BYTES: usize = 14_000;
 const GAS_FOR_RECEIVER: Gas = Gas::from_tgas(40);
 const GAS_FOR_RESOLVE: Gas = Gas::from_tgas(20);
+/// The worst measured case is 36 Tgas: a full world catching up over a season's end.
+const GAS_FOR_WATCHES: Gas = Gas::from_tgas(60);
 const MAX_RECEIVER_REPLY: usize = 4_096;
 /// Testnet NEAR given to a new player, enough for hundreds of moves.
 const GRANT: NearToken = NearToken::from_millinear(120);
@@ -87,6 +91,9 @@ pub struct Contract {
     /// A key that can only call `open_account`. It is public on purpose: this
     /// is how a new player gets an account without a wallet or a server.
     front_door: Option<String>,
+    /// A separate public key that can only call `tick`, so busy ticking can't use
+    /// up the front door's allowance.
+    tick_key: Option<String>,
     accounts_opened: u32,
     window_started_ms: u64,
     window_count: u32,
@@ -112,16 +119,19 @@ impl Contract {
             watch_ms: watch_ms.0,
             sandbox: false,
         };
-        Self {
+        let mut contract = Self {
             world: World::new(cfg, seed_from_entropy()),
             owner,
             reporter,
             last_tick_ms: env::block_timestamp_ms(),
             front_door: None,
+            tick_key: None,
             accounts_opened: 0,
             window_started_ms: 0,
             window_count: 0,
-        }
+        };
+        contract.flush_logs();
+        contract
     }
 
     /// Replaces all contract state. For upgrades during the hackathon.
@@ -133,11 +143,30 @@ impl Contract {
 
     // ---- moving the world on ----------------------------------------------
 
-    /// Advances the world if a watch has passed. Anyone may call this, and it is
-    /// harmless to call early. Returns the number of watches that ran.
-    pub fn tick(&mut self) -> u32 {
-        let now = env::block_timestamp_ms();
-        let due = now.saturating_sub(self.last_tick_ms) / self.world.cfg.watch_ms.max(1);
+    /// Moves the world on if a watch has passed. Anyone may call this, and it is
+    /// harmless to call early.
+    ///
+    /// The watch itself runs in a separate receipt with its own randomness. If it
+    /// ran here, a caller could batch `tick` with a check that fails when a ship of
+    /// theirs sinks, undo the whole transaction, and roll the dice again.
+    ///
+    /// That receipt always gets a fixed, ample amount of gas. Otherwise a caller
+    /// could attach just too little, so that costly outcomes run out and revert.
+    pub fn tick(&mut self) -> PromiseOrValue<u32> {
+        if self.watches_due() == 0 {
+            return PromiseOrValue::Value(0);
+        }
+        PromiseOrValue::Promise(
+            Self::ext(env::current_account_id())
+                .with_static_gas(GAS_FOR_WATCHES)
+                .run_watches(),
+        )
+    }
+
+    /// Runs the watches that are due. Only `tick` can start this.
+    #[private]
+    pub fn run_watches(&mut self) -> u32 {
+        let due = self.watches_due();
         if due == 0 {
             return 0;
         }
@@ -147,7 +176,7 @@ impl Contract {
             seed[0] ^= i as u8;
             self.world.step(&seed);
         }
-        self.last_tick_ms = now;
+        self.last_tick_ms = env::block_timestamp_ms();
         self.flush_logs();
         run as u32
     }
@@ -238,9 +267,15 @@ impl Contract {
         self.front_door.clone()
     }
 
-    pub fn set_front_door(&mut self, key: Option<String>) {
+    /// The public key any browser can use to move the world on.
+    pub fn tick_key(&self) -> Option<String> {
+        self.tick_key.clone()
+    }
+
+    pub fn set_public_keys(&mut self, front_door: Option<String>, tick_key: Option<String>) {
         require!(env::predecessor_account_id() == self.owner, "owner only");
-        self.front_door = key;
+        self.front_door = front_door;
+        self.tick_key = tick_key;
     }
 
     // ---- sea reports --------------------------------------------------------
@@ -278,6 +313,7 @@ impl Contract {
         };
         self.world = World::new(cfg, seed_from_entropy());
         self.last_tick_ms = env::block_timestamp_ms();
+        self.flush_logs();
     }
 
     // ---- reads --------------------------------------------------------------
@@ -320,7 +356,7 @@ impl Contract {
         memo: Option<String>,
     ) {
         near_sdk::assert_one_yocto();
-        Self::no_approvals(approval.is_some());
+        Self::no_approvals(approval.is_none());
         let _ = memo;
         let sender = env::predecessor_account_id();
         self.move_tokens(&sender, &receiver_id, &[token_id], &[amount]);
@@ -337,7 +373,7 @@ impl Contract {
         memo: Option<String>,
     ) {
         near_sdk::assert_one_yocto();
-        Self::no_approvals(approvals.is_some());
+        Self::no_approvals(approvals.iter().flatten().all(Option::is_none));
         let _ = memo;
         require!(token_ids.len() == amounts.len(), "token_ids and amounts differ in length");
         let sender = env::predecessor_account_id();
@@ -356,7 +392,7 @@ impl Contract {
         msg: String,
     ) -> Promise {
         near_sdk::assert_one_yocto();
-        Self::no_approvals(approval.is_some());
+        Self::no_approvals(approval.is_none());
         let _ = memo;
         self.transfer_and_call(receiver_id, vec![token_id], vec![amount], msg)
     }
@@ -372,7 +408,7 @@ impl Contract {
         msg: String,
     ) -> Promise {
         near_sdk::assert_one_yocto();
-        Self::no_approvals(approvals.is_some());
+        Self::no_approvals(approvals.iter().flatten().all(Option::is_none));
         let _ = memo;
         require!(token_ids.len() == amounts.len(), "token_ids and amounts differ in length");
         self.transfer_and_call(receiver_id, token_ids, amounts, msg)
@@ -394,8 +430,9 @@ impl Contract {
             .unwrap_or_else(|| amounts.clone());
         let mut spent = Vec::with_capacity(amounts.len());
         for ((token_id, amount), unused) in token_ids.iter().zip(&amounts).zip(&unused) {
+            // A policy comes back whole or stays where it went.
             let held = self.world.ledger.balance_of(token_id, receiver_id.as_str());
-            let back = unused.0.min(amount.0).min(held);
+            let back = if unused.0 >= amount.0 && held == amount.0 { amount.0 } else { 0 };
             if back > 0 {
                 self.move_tokens(&receiver_id, &sender_id, core::slice::from_ref(token_id), &[U128(back)]);
             }
@@ -483,31 +520,28 @@ impl Contract {
         receipt
     }
 
+    fn watches_due(&self) -> u64 {
+        let now = env::block_timestamp_ms();
+        now.saturating_sub(self.last_tick_ms) / self.world.cfg.watch_ms.max(1)
+    }
+
     fn flush_logs(&mut self) {
-        for line in self.world.ledger.drain_logs(MAX_LOG_LINES) {
+        for line in self.world.ledger.drain_logs(MAX_LOG_BYTES) {
             env::log_str(&line);
         }
     }
 
-    fn no_approvals(present: bool) {
-        require!(!present, "this contract does not use approvals");
+    fn no_approvals(none_given: bool) {
+        require!(none_given, "this contract does not use approvals");
     }
 
     fn move_tokens(&mut self, from: &AccountId, to: &AccountId, tokens: &[String], amounts: &[U128]) {
         require!(from != to, "sender and receiver are the same");
-        let ledger = &mut self.world.ledger;
-        let sender = ledger
-            .find_account(from.as_str())
-            .unwrap_or_else(|| env::panic_str("the sender holds nothing here"));
-        let receiver = ledger.account(to.as_str()).unwrap_or_else(|e| env::panic_str(&e.to_string()));
+        require!(!tokens.is_empty(), "no tokens given");
         for (token, amount) in tokens.iter().zip(amounts) {
-            require!(amount.0 > 0, "amount must be positive");
-            let ix = ledger
-                .find_token(token)
-                .unwrap_or_else(|| env::panic_str("no such token"));
-            ledger
-                .transfer(ix, sender, receiver, amount.0)
-                .unwrap_or_else(|e| env::panic_str(&e.to_string()));
+            self.world
+                .transfer_token(from.as_str(), to.as_str(), token, amount.0)
+                .unwrap_or_else(|e| env::panic_str(&e));
         }
     }
 

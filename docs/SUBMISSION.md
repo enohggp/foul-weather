@@ -34,13 +34,13 @@ These you need to fill in yourself: team lead's name, contact email, team size, 
 
 > Most game economies are a price table with a shop on top. Foul Weather makes risk the thing you trade. You run a marine insurance house: captains with their own wallets ask for cover, you price the voyage, and you hear a bell when the ship comes home or doesn't. Your prices decide who can afford to sail, which decides what reaches port, which decides what captains can pay you. In one great storm, houses that all passed their risk on to each other fall in a chain.
 >
-> NEAR runs the whole game with no server. One contract holds the rules and every token as NEP-245, including insurance policies you can sell. Anyone can move the world on with a public tick, at about 4 Tgas a watch. Captains' wallets are sub-accounts with no key at all, so only the rules can move their money. Claims clear with an Eisenberg-Noe algorithm on-chain. Hidden facts, like a hull's condition, are not stored: they're drawn from block randomness the moment someone looks. Live NEAR Intents quotes set the roughness of the sea, so real markets change the game with no patch. Players start with a guest account or NEAR Auth, and never see a wallet, seed phrase or gas prompt. A public front-door key, limited by NEAR to one method, opens accounts without a server. Any AI agent can run a house through the public methods, and an example agent can use NEAR AI Cloud.
+> NEAR runs the whole game with no server. One contract holds the rules and every token as NEP-245, including insurance policies you can sell. Anyone can move the world on with a public tick, at 4 to 6 Tgas a watch. Captains' wallets are sub-accounts with no key at all, so only the rules can move their money. Claims clear with an Eisenberg-Noe algorithm on-chain. Hidden facts, like a hull's condition, are not stored: they're drawn from block randomness the moment someone looks. Live NEAR Intents quotes set the roughness of the sea, so real markets change the game with no patch. Players start with a guest account or NEAR Auth, and never see a wallet, seed phrase or gas prompt. A public front-door key, limited by NEAR to one method, opens accounts without a server. Any AI agent can run a house through the public methods, and an example agent can use NEAR AI Cloud.
 >
-> The same Rust rules compile to the contract and to the browser, so practice mode and the week-in-a-minute fast-forward run the contract's real rules. In 600 simulated seasons, signing everything fails about two times in three, while careful underwriting doubles the money.
+> The same Rust rules compile to the contract and to the browser, so practice mode and the week-in-a-minute fast-forward run the contract's real rules. In 900 bot-played seasons, signing everything failed more than half the time, while careful underwriting more than doubled the money.
 
-## Demo video: 60 to 90 seconds
+## Demo video
 
-Record at 1440 by 900 with sound on, because the bells matter.
+A captioned, two-minute recording of the real game is at [`docs/demo/foul-weather-demo.mp4`](demo/foul-weather-demo.mp4). It has no sound, so the bells are missing. You can post it as it is, but your own voice and the bells would be better. A shorter script for that:
 
 | Time | Show | Say |
 | --- | --- | --- |

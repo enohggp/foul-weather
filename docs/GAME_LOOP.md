@@ -40,14 +40,14 @@ Nothing is priced from a table. Captains offer a share of what a voyage should e
 
 That is the real insurance cycle, and no one scripted it. It comes out of `crates/core/src/rules.rs`.
 
-## What 1,200 simulated seasons show
+## What 900 simulated seasons show
 
 Run this yourself with `cargo run --release -p foul-core --example balance -- 300`.
 
 | Style of play | Houses that fail | Median final capital | Top 10% finish at |
 | --- | --- | --- | --- |
-| Signs 100% of everything | 67% | 0 | 8,766 |
-| Signs 50% of everything | 60% | 0 | 11,850 |
-| Careful: prices risk, avoids storms, lays off | 11% | 8,744 | 12,761 |
+| Signs 100% of everything | 72% | 0 | 9,615 |
+| Signs 50% of everything | 54% | 0 | 11,778 |
+| Careful: prices risk, avoids storms, lays off | 8% | 9,792 | 14,389 |
 
-Each starts with 4,000 crowns. Figures are from 200 seasons per style, after the final tuning pass.
+Each starts with 4,000 crowns. Figures are from 300 seasons per style, played by scripted bots, not people.
