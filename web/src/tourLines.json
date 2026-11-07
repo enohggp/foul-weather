@@ -1,0 +1,22 @@
+{
+  "intro1": "This is Foul Weather, a game built for the NEAR hackathon.",
+  "intro2": "Most game economies are just a shop with a price list. In this one, you don't trade goods. You run a marine insurance house, and you carry the risk.",
+  "slip1": "A captain wants cover before sailing. Each captain is a character with a wallet of their own on NEAR. Here's what they'll pay, and here's how risky the crossing looks.",
+  "slip2": "Press Why, and the captain explains the offer. Captains don't price the sea. They price their own profit. Spotting when that isn't enough is your job.",
+  "survey": "For a small fee, a surveyor checks the ship. That number didn't exist until I paid for it. It's drawn from fresh randomness, which is how you keep a secret on a public blockchain.",
+  "sign": "If the rate beats the risk, you sign. The premium is paid to you straight away. If the ship goes down, you pay out your share.",
+  "ring": "My ship now has a brass ring on the chart. I've sped the clock up so we can watch her cross. Listen for the bell.",
+  "safe": "Two bells. She's home safe, and the premium is mine to keep.",
+  "lost": "One bell. She's gone, and that claim is coming out of my capital.",
+  "waiting": "While she crosses, notice that prices, premiums and captains are all moving by themselves.",
+  "spiral1": "Now for the part I most want to show you. Every house in this Room has passed risk on to another house, to protect itself. Nobody can see the whole chain. Then the glass falls.",
+  "storm": "A great storm hits every lane at once. Ships start going down. On the right is the Room. Each line shows who is relying on whom.",
+  "fall": "The claims come due. One house can't pay, so the house relying on it can't pay either. Watch them go grey.",
+  "gone1": "One storm, and that chain of houses is gone. Only the storm was staged. Who fell, and in what order, came from the same rules the contract runs.",
+  "gone2": "Real insurance markets have failed in the same way. Here, it's the game.",
+  "live1": "So far that was practice, running in this browser. Now let's go live. One click, and the same game opens on NEAR testnet. There's no wallet, no seed phrase and no popup. An account is being opened for us right now.",
+  "live2": "We're in. This is the shared live Room, and there is no game server. One contract holds the rules and every token. The captains' wallets have no private keys at all, so only the rules can move their money.",
+  "live3": "Watch this. I'm signing a slip on chain right now, with no popup. There's the transaction, under Last action.",
+  "live4": "Each sea lane follows a real cross-chain route. Live NEAR Intents prices set how rough the water is, so real markets change the game with no update from anyone.",
+  "end": "That's Foul Weather. You don't trade the goods. You carry the risk. Would you sign this slip?"
+}

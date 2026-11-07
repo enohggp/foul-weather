@@ -38,7 +38,9 @@ npm run dev
 
 Open <http://localhost:3000>. Use that exact address, because Google and email sign-in only works there.
 
-Each step below says what to do and what you should see.
+The quickest way to see everything is **Take the guided tour** on the title screen. It plays the real game by itself for about four minutes, with captions, and finishes with a real move on NEAR testnet. It speaks if your browser has a speech voice. Press Esc to stop it.
+
+Or try it yourself. Each step below says what to do and what you should see.
 
 1. **Do:** type a house name and press **Open for business**. **See:** a sea chart and a slip from a captain. The world waits for you.
 2. **Do:** press **Why?** on the slip. **See:** the captain's reasoning, from their profit and their cash.

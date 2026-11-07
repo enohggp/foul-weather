@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { House, View } from "../types";
 import { crowns, pct, titleFor } from "../words";
+import { runTour } from "../tour";
 import { LineChart, Seal } from "./bits";
 
 export interface TitleChoice {
@@ -90,6 +91,9 @@ export function Title({
             </button>
           )}
         </form>
+        <button className="link tour-link" type="button" disabled={!ready} onClick={() => void runTour()}>
+          ▶ Take the guided tour, 3 minutes with voice
+        </button>
         {working && <p className="muted small">{working}</p>}
         {error && <p className="warn">{error}</p>}
         <p className="muted small fine">

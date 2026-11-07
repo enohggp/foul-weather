@@ -354,7 +354,8 @@ export default function Chart({ view, driver, flash }: Props) {
     const shipsDrawn: { x: number; y: number; voyage: Voyage }[] = [];
 
     const resize = () => {
-      const box = host.current!.getBoundingClientRect();
+      if (!host.current) return;
+      const box = host.current.getBoundingClientRect();
       dpr = Math.min(window.devicePixelRatio || 1, 2);
       el.width = Math.max(1, Math.round(box.width * dpr));
       el.height = Math.max(1, Math.round(box.height * dpr));

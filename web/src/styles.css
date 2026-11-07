@@ -1310,6 +1310,36 @@ td.down {
   font-weight: 500;
 }
 
+/* ---- Guided tour ---- */
+
+.tour-link {
+  margin-top: 12px;
+  font-size: 1rem;
+  white-space: normal;
+  text-align: left;
+}
+
+#tour-caption {
+  position: fixed;
+  left: 50%;
+  bottom: 22px;
+  transform: translateX(-50%);
+  z-index: 40;
+  width: min(760px, calc(100% - 32px));
+  padding: 12px 20px;
+  border-radius: 6px;
+  background: #1c140cf2;
+  color: #f7ecd2;
+  font-size: 1.16rem;
+  line-height: 1.32;
+  text-align: center;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
+}
+
+body.touring .note {
+  display: none;
+}
+
 /* ---- Smaller screens ---- */
 
 @media (max-width: 1180px) {
