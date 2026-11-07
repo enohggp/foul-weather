@@ -178,6 +178,8 @@ pub struct PositionView {
     pub ceded: u64,
     pub rate_bps: u16,
     pub parent: Option<u32>,
+    /// For your own risks: a rate the Room would probably accept to carry it.
+    pub lay_off_hint_bps: u16,
 }
 
 #[derive(Serialize)]
@@ -276,6 +278,31 @@ impl World {
             }
         }
         (base, storm)
+    }
+
+    /// The lowest rate any Room house would likely accept to carry part of a risk.
+    fn lay_off_hint(&self, p: &Position) -> u16 {
+        let lane = usize::from(p.lane);
+        let hull = self
+            .voyages
+            .iter()
+            .find(|v| v.id == p.voyage)
+            .map(|v| self.captains[usize::from(v.captain)].hull)
+            .unwrap_or(60);
+        let base = rules::voyage_risk_bps(lane, self.lanes[lane].sea, hull);
+        let horizon = LANES[lane].watches + 1;
+        let storm = self.storm_near(lane, horizon);
+        let lowest = (0..self.houses.len())
+            .filter(|&h| self.houses[h].active() && self.houses[h].is_auto())
+            .map(|h| {
+                let persona = self.persona(h);
+                let noticed = storm.filter(|s| self.watch >= s.warned + persona.slow_watches);
+                let load = noticed.map_or(0, |s| u64::from(s.strength_bps) * u64::from(s.ends - s.starts));
+                rules::reinsurer_ask_bps(persona, base + load, self.houses[h].fear, self.book_full_pct(h))
+            })
+            .min()
+            .unwrap_or(4_000);
+        (lowest * 112 / 100).clamp(100, 4_000) as u16
     }
 
     fn slip_reasons(&self, s: &Slip) -> Vec<Reason> {
@@ -488,6 +515,7 @@ impl World {
                     ceded: self.ceded_from(p.id),
                     rate_bps: p.rate_bps,
                     parent: p.parent,
+                    lay_off_hint_bps: if you == Some(usize::from(p.writer)) { self.lay_off_hint(p) } else { 0 },
                 }
             })
             .collect();

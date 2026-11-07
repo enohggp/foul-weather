@@ -1,0 +1,31 @@
+{
+  "name": "foul-weather",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite --config web/vite.config.ts",
+    "build": "vite build --config web/vite.config.ts",
+    "preview": "vite preview --config web/vite.config.ts",
+    "typecheck": "tsc --noEmit -p web/tsconfig.json",
+    "verify": "node scripts/verify-chain.mjs",
+    "sea": "node scripts/sea-report.mjs",
+    "agent": "node scripts/agent-house.mjs"
+  },
+  "dependencies": {
+    "near-kit": "^0.20.2",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@fontsource/im-fell-english": "^5.3.0",
+    "@fontsource/im-fell-english-sc": "^5.3.0",
+    "@fontsource/spectral": "^5.3.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.2.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.6"
+  }
+}

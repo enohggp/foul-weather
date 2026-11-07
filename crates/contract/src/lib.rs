@@ -187,6 +187,18 @@ impl Contract {
         self.reporter = reporter;
     }
 
+    /// Starts the world again from scratch, with a new watch length.
+    pub fn reset(&mut self, watch_ms: U64) {
+        require!(env::predecessor_account_id() == self.owner, "owner only");
+        let cfg = Config {
+            domain: env::current_account_id().to_string(),
+            watch_ms: watch_ms.0,
+            sandbox: false,
+        };
+        self.world = World::new(cfg, seed_from_entropy());
+        self.last_tick_ms = env::block_timestamp_ms();
+    }
+
     // ---- reads --------------------------------------------------------------
 
     /// The whole harbor as seen by `viewer`. This is what the page renders.

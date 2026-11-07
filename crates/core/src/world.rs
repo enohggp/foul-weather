@@ -361,12 +361,14 @@ impl World {
 
         for port in 0..PORT_COUNT {
             for good in 0..GOOD_COUNT {
-                let (target, _) = rules::port_stock_rule(port, good);
+                let (target, flow) = rules::port_stock_rule(port, good);
                 if target == 0 {
                     continue;
                 }
-                let spread = target / 3;
-                let stock = target - spread / 2 + r.below(u64::from(spread)) as u32;
+                // Makers start with plenty and buyers start short, so trade pays from day one.
+                let level = if flow > 0 { target * 13 / 10 } else { target * 3 / 4 };
+                let spread = target / 4;
+                let stock = level - spread / 2 + r.below(u64::from(spread)) as u32;
                 self.ports[port].stock[good] = stock;
                 self.ledger.mint(self.cargo[good], self.guild, u128::from(stock));
             }
