@@ -13,9 +13,12 @@ const RPC = "https://rpc.testnet.fastnear.com";
 const ACCOUNT_HELPER = "https://helper.nearprotocol.com/account";
 const STORE_KEY = "fw-live-account";
 const POLL_MS = 2500;
-const ACTION_GAS = "100 Tgas";
-const TICK_GAS = "150 Tgas";
+// Prepaid gas is reserved from the key's allowance at 0.001 NEAR per Tgas, so keep
+// this close to what a call really burns. A watch costs about 4 Tgas.
+const ACTION_GAS = "40 Tgas";
+const TICK_GAS = "40 Tgas";
 const network = { networkId: "testnet", rpcUrl: RPC };
+const LATEST = { finality: "optimistic" } as const;
 
 interface Saved {
   accountId: string;
@@ -34,34 +37,67 @@ interface Outcome {
   status: { SuccessValue?: string };
 }
 
-function loadAccount(): Saved | null {
+function storeKey(identity?: string) {
+  return identity ? `${STORE_KEY}:${identity}` : STORE_KEY;
+}
+
+function loadAccount(identity?: string): Saved | null {
   try {
-    const raw = localStorage.getItem(STORE_KEY);
+    const raw = localStorage.getItem(storeKey(identity));
     return raw ? (JSON.parse(raw) as Saved) : null;
   } catch {
     return null;
   }
 }
 
-function saveAccount(account: Saved) {
+function saveAccount(account: Saved, identity?: string) {
   try {
-    localStorage.setItem(STORE_KEY, JSON.stringify(account));
+    localStorage.setItem(storeKey(identity), JSON.stringify(account));
   } catch {
     // Without storage this house only lasts as long as the tab.
   }
 }
 
-/** Creates a fresh testnet account, funded by NEAR's public faucet. */
-async function createAccount(): Promise<Saved> {
-  const key = generateKey();
+/** The public faucet: free, but it limits how often one address may ask. */
+async function viaFaucet(publicKey: string): Promise<string | null> {
   const suffix = crypto.randomUUID().replace(/-/g, "").slice(0, 12);
   const accountId = `fw-${suffix}.testnet`;
   const response = await fetch(ACCOUNT_HELPER, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ newAccountId: accountId, newAccountPublicKey: key.publicKey.toString() }),
-  });
-  if (!response.ok) throw new Error("The Room could not open an account right now. Try practice mode.");
+    body: JSON.stringify({ newAccountId: accountId, newAccountPublicKey: publicKey }),
+  }).catch(() => null);
+  return response?.ok ? accountId : null;
+}
+
+/** The contract's front door: a public key that can only open accounts. */
+async function viaFrontDoor(publicKey: string, identity?: string): Promise<string | null> {
+  const reader = new Near({ network });
+  const door = await reader.view<string>(CONTRACT, "front_door", {});
+  if (!door) return null;
+  const near = new Near({ network, privateKey: door as `ed25519:${string}`, defaultSignerId: CONTRACT });
+  const outcome = (await near
+    .transaction(CONTRACT)
+    .functionCall(CONTRACT, "open_account", { public_key: publicKey, identity: identity ?? null }, { gas: "60 Tgas" })
+    .send({ waitUntil: "EXECUTED_OPTIMISTIC" })) as unknown as Outcome;
+  const value = outcome.status?.SuccessValue;
+  return value ? (JSON.parse(atob(value)) as string) : null;
+}
+
+/** Creates a fresh testnet account. The player never sees any of this. */
+async function createAccount(identity?: string): Promise<Saved> {
+  const key = generateKey();
+  const publicKey = key.publicKey.toString();
+  const accountId = identity
+    ? await viaFrontDoor(publicKey, identity).catch(() => null)
+    : ((await viaFaucet(publicKey)) ?? (await viaFrontDoor(publicKey).catch(() => null)));
+  if (!accountId) {
+    throw new Error(
+      identity
+        ? "This login may already have a house on another device. Open it there, or join as a guest here."
+        : "The Room could not open an account right now. Try practice mode.",
+    );
+  }
   const reader = new Near({ network });
   for (let i = 0; i < 20; i++) {
     if (await reader.accountExists(accountId)) return { accountId, secretKey: key.secretKey };
@@ -117,12 +153,16 @@ export class LiveDriver implements Driver {
   }
 
   /** Opens or reopens this device's account and house. */
-  static async connect(houseName: string, progress: (message: string) => void): Promise<LiveDriver> {
-    let account = loadAccount();
+  static async connect(
+    houseName: string,
+    progress: (message: string) => void,
+    identity?: string,
+  ): Promise<LiveDriver> {
+    let account = loadAccount(identity);
     if (!account) {
       progress("Opening your account in the Room…");
-      account = await createAccount();
-      saveAccount(account);
+      account = await createAccount(identity);
+      saveAccount(account, identity);
     }
     const near = new Near({
       network,
@@ -167,7 +207,7 @@ export class LiveDriver implements Driver {
   }
 
   private async refresh() {
-    const view = await this.near.view<View>(CONTRACT, "get_view", { viewer: this.accountId });
+    const view = await this.near.view<View>(CONTRACT, "get_view", { viewer: this.accountId }, LATEST);
     if (!view) return;
     if (view.watch !== this.lastWatch) {
       this.lastWatch = view.watch;
@@ -186,7 +226,7 @@ export class LiveDriver implements Driver {
     if (this.stopped || this.polling) return;
     this.polling = true;
     try {
-      const status = await this.near.view<Status>(CONTRACT, "status", {});
+      const status = await this.near.view<Status>(CONTRACT, "status", {}, LATEST);
       if (status) {
         const key = `${status.season}:${status.watch}:${status.seq}`;
         if (key !== this.lastSeq) {

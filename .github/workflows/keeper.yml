@@ -1,0 +1,24 @@
+# Optional. Keeps the live world moving and posts sea reports while no one plays.
+# Add a repository secret NEAR_PRIVATE_KEY holding the contract account's key.
+# Testnet only. Players' browsers tick the world themselves, so this can be off.
+name: Keeper
+
+on:
+  schedule:
+    - cron: "*/20 * * * *"
+  workflow_dispatch:
+
+jobs:
+  keep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: node scripts/keeper.mjs --watches 80
+        env:
+          NEAR_PRIVATE_KEY: ${{ secrets.NEAR_PRIVATE_KEY }}

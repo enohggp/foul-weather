@@ -1182,6 +1182,7 @@ td.down {
   position: fixed;
   inset: 0;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   place-items: center;
   padding: 16px;
   background: rgba(18, 12, 7, 0.62);
@@ -1209,6 +1210,30 @@ td.down {
 .modal h2 {
   font-size: 2rem;
   line-height: 1.08;
+}
+
+.fallen {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.fallen li {
+  display: grid;
+  grid-template-columns: 34px 1fr auto;
+  gap: 8px;
+  border-bottom: 1px solid var(--rule);
+  padding-bottom: 3px;
+}
+
+.fallen b {
+  font-weight: 500;
+}
+
+.fallen .when {
+  color: var(--oxblood);
 }
 
 .charts {
@@ -1260,6 +1285,24 @@ td.down {
   fill: var(--ink);
   stroke: var(--paper);
   stroke-width: 2;
+}
+
+.select {
+  display: block;
+  width: 100%;
+  margin-top: 2px;
+  padding: 5px 6px;
+  font: inherit;
+  font-size: 0.9rem;
+  color: var(--ink);
+  background: var(--paper-3);
+  border: 1px solid var(--ink-3);
+  border-radius: 3px;
+}
+
+.quote-line {
+  font-size: 1.05rem;
+  font-weight: 500;
 }
 
 /* ---- Smaller screens ---- */

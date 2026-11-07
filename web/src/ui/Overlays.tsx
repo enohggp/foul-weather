@@ -6,7 +6,7 @@ import { crowns, pct, titleFor } from "../words";
 import { LineChart, Seal } from "./bits";
 
 export interface TitleChoice {
-  mode: "practice" | "live";
+  mode: "practice" | "live" | "login";
   name: string;
 }
 
@@ -14,12 +14,14 @@ export function Title({
   onStart,
   ready,
   liveReady,
+  loginReady,
   error,
   working,
 }: {
   onStart: (choice: TitleChoice) => void;
   ready: boolean;
   liveReady: boolean;
+  loginReady: boolean;
   error: string | null;
   working: string | null;
 }) {
@@ -82,6 +84,11 @@ export function Title({
           >
             Join the live Room
           </button>
+          {loginReady && (
+            <button className="link" type="button" disabled={!ready || !!working} onClick={() => go("login")}>
+              Sign in with Google or email to keep your house
+            </button>
+          )}
         </form>
         {working && <p className="muted small">{working}</p>}
         {error && <p className="warn">{error}</p>}
@@ -222,6 +229,72 @@ export function StruckOff({
           Watch the season play out
         </button>
         <p className="muted small">A house may be founded again once in a season, with half the money and a poor name.</p>
+      </div>
+    </div>
+  );
+}
+
+export interface Fallen {
+  name: string;
+  watch: number;
+  owed: number;
+  paid: number;
+}
+
+export function Collapse({
+  fallen,
+  lost,
+  watches,
+  wrecks,
+  onClose,
+}: {
+  fallen: Fallen[];
+  lost: number;
+  watches: number;
+  wrecks: number;
+  onClose: () => void;
+}) {
+  const first = fallen[0]?.watch ?? 0;
+  return (
+    <div className="modal-back" role="dialog" aria-modal="true" aria-label="The spiral">
+      <div className="modal">
+        <p className="kicker">{watches} watches later</p>
+        <h2>One storm, {fallen.length} {fallen.length === 1 ? "house" : "houses"} gone</h2>
+        <p className="lede">
+          Each house thought it had passed its risk on. It had passed it to a house that had done the same. When claims
+          fell due, one failure left the next without its reinsurance. Real insurance markets have failed the same way.
+        </p>
+        <ol className="fallen">
+          {fallen.map((f) => (
+            <li key={f.name}>
+              <span className="when">+{f.watch - first}</span>
+              <b>{f.name}</b>
+              <span className="num">
+                paid {crowns(f.paid)} of {crowns(f.owed)}
+              </span>
+            </li>
+          ))}
+        </ol>
+        <div className="kpis three">
+          <div>
+            <span className="label">Ships lost this season</span>
+            <strong>{wrecks}</strong>
+          </div>
+          <div>
+            <span className="label">Capital destroyed</span>
+            <strong>{crowns(lost)}</strong>
+          </div>
+          <div>
+            <span className="label">Crowns created</span>
+            <strong>0</strong>
+          </div>
+        </div>
+        <p className="muted small">
+          Only the storm was staged. Who fell, and in what order, came from the same rules the contract runs, replaying one fixed season.
+        </p>
+        <button className="primary" onClick={onClose}>
+          Open your own house
+        </button>
       </div>
     </div>
   );

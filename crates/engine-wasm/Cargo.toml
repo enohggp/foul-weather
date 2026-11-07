@@ -1,4 +1,4 @@
-﻿[package]
+[package]
 name = "foul-engine-wasm"
 description = "Foul Weather's rules compiled for the browser, with a small JSON interface."
 version.workspace = true

@@ -12,3 +12,4 @@ credentials/
 .DS_Store
 Thumbs.db
 *.log
+.agent-key.json

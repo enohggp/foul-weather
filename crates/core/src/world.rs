@@ -366,7 +366,7 @@ impl World {
                     continue;
                 }
                 // Makers start with plenty and buyers start short, so trade pays from day one.
-                let level = if flow > 0 { target * 13 / 10 } else { target * 3 / 4 };
+                let level = if flow > 0 { target * 14 / 10 } else { target * 3 / 5 };
                 let spread = target / 4;
                 let stock = level - spread / 2 + r.below(u64::from(spread)) as u32;
                 self.ports[port].stock[good] = stock;
@@ -384,7 +384,7 @@ impl World {
             let port = if i % 2 == 0 { rules::HUB } else { rules::LANES[def.home_lane].port };
             self.captains.push(Captain {
                 acct,
-                state: CaptainState::AtPort { port: port as u8, ready_at: r.below(5) as u32 },
+                state: CaptainState::AtPort { port: port as u8, ready_at: r.below(18) as u32 },
                 hull: def.hull,
                 voyages: 0,
                 losses: 0,

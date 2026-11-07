@@ -1,4 +1,4 @@
-﻿//! One watch of the world: weather, ports, ships, claims, the Room, then captains.
+//! One watch of the world: weather, ports, ships, claims, the Room, then captains.
 
 use crate::clearing::{clear, Debt};
 use crate::rng::Rng;

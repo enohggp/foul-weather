@@ -1,4 +1,4 @@
-﻿[package]
+[package]
 name = "foul-weather-contract"
 description = "Foul Weather on NEAR: one contract holds the world, its rules and every token (NEP-245)."
 version.workspace = true

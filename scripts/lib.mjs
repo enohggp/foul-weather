@@ -24,4 +24,7 @@ export async function signer(accountId) {
   return new Near({ network, privateKey, defaultSignerId: accountId });
 }
 
+/** Reads the newest state rather than waiting for finality. */
+export const LATEST = { finality: "optimistic" };
+
 export const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));

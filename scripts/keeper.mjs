@@ -6,7 +6,7 @@
 //   node scripts/keeper.mjs --watches 40    run 40 watches, then exit
 //   node scripts/keeper.mjs --sea-only      post one sea report, then exit
 
-import { CONTRACT, signer, sleep } from "./lib.mjs";
+import { CONTRACT, LATEST, signer, sleep } from "./lib.mjs";
 import { SeaWatch } from "../web/src/seaCore.ts";
 
 const args = process.argv.slice(2);
@@ -38,13 +38,13 @@ if (seaOnly) {
 
 let watches = 0;
 while (watches < limit) {
-  const status = await near.view(CONTRACT, "status", {});
+  const status = await near.view(CONTRACT, "status", {}, LATEST);
   const wait = Number(status.next_tick_ms) - Date.now();
   if (wait > 0) await sleep(Math.min(wait + 200, 15_000));
   try {
     const outcome = await near
       .transaction(reporter)
-      .functionCall(CONTRACT, "tick", {}, { gas: "150 Tgas" })
+      .functionCall(CONTRACT, "tick", {}, { gas: "60 Tgas" })
       .send({ waitUntil: "EXECUTED_OPTIMISTIC" });
     watches += 1;
     const burnt = outcome.transaction_outcome?.outcome?.gas_burnt ?? 0;

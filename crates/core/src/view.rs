@@ -266,18 +266,18 @@ impl World {
     /// Risk a voyage would run, with the storm forecast added in.
     fn forecast_risk(&self, s: &Slip, hull: u8) -> (u64, u64) {
         let lane = usize::from(s.lane);
-        let base = rules::voyage_risk_bps(lane, self.lanes[lane].sea, hull);
+        let base = rules::voyage_risk_bps(lane, self.lanes[lane].sea, hull).min(rules::BPS);
         let sails = s.closes;
         let lands = sails + LANES[lane].watches;
-        let mut storm = 0;
+        // Chance of surviving every storm watch, so the total can never pass 100%.
+        let mut survive = rules::BPS - base;
         for st in self.storms.iter().filter(|st| st.covers(lane)) {
-            let from = st.starts.max(sails);
-            let to = st.ends.min(lands);
-            if to > from {
-                storm += rules::storm_hazard_bps(u64::from(st.strength_bps), hull) * u64::from(to - from);
+            let hazard = rules::storm_hazard_bps(u64::from(st.strength_bps), hull).min(rules::BPS);
+            for _ in st.starts.max(sails)..st.ends.min(lands) {
+                survive = survive * (rules::BPS - hazard) / rules::BPS;
             }
         }
-        (base, storm)
+        (base, rules::BPS - survive - base)
     }
 
     /// The lowest rate any Room house would likely accept to carry part of a risk.

@@ -1,4 +1,4 @@
-﻿//! Foul Weather on NEAR.
+//! Foul Weather on NEAR.
 //!
 //! One contract holds the whole harbor: the rules, every captain and house, and
 //! every token as NEP-245 multi-tokens. There is no game server. Anyone can call
@@ -9,8 +9,8 @@ use foul_core::{Action, Config, Receipt, World};
 use near_sdk::json_types::{U128, U64};
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::{
-    env, ext_contract, near, require, AccountId, Gas, NearToken, PanicOnDefault, Promise,
-    PromiseOrValue,
+    env, ext_contract, near, require, AccountId, Allowance, Gas, NearToken, PanicOnDefault,
+    Promise, PromiseOrValue, PublicKey,
 };
 
 /// Watches a single `tick` may run after a quiet spell. Beyond this the world
@@ -20,6 +20,10 @@ const MAX_LOG_LINES: usize = 12;
 const GAS_FOR_RECEIVER: Gas = Gas::from_tgas(40);
 const GAS_FOR_RESOLVE: Gas = Gas::from_tgas(20);
 const MAX_RECEIVER_REPLY: usize = 4_096;
+/// Testnet NEAR given to a new player, enough for hundreds of moves.
+const GRANT: NearToken = NearToken::from_millinear(120);
+const ACCOUNTS_PER_HOUR: u32 = 40;
+const HOUR_MS: u64 = 3_600_000;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(crate = "near_sdk::serde")]
@@ -80,6 +84,12 @@ pub struct Contract {
     /// The account allowed to post live sea readings.
     reporter: AccountId,
     last_tick_ms: u64,
+    /// A key that can only call `open_account`. It is public on purpose: this
+    /// is how a new player gets an account without a wallet or a server.
+    front_door: Option<String>,
+    accounts_opened: u32,
+    window_started_ms: u64,
+    window_count: u32,
 }
 
 fn entropy() -> [u8; 32] {
@@ -107,7 +117,18 @@ impl Contract {
             owner,
             reporter,
             last_tick_ms: env::block_timestamp_ms(),
+            front_door: None,
+            accounts_opened: 0,
+            window_started_ms: 0,
+            window_count: 0,
         }
+    }
+
+    /// Replaces all contract state. For upgrades during the hackathon.
+    #[private]
+    #[init(ignore_state)]
+    pub fn reinit(owner: AccountId, reporter: AccountId, watch_ms: U64) -> Self {
+        Self::new(owner, reporter, watch_ms)
     }
 
     // ---- moving the world on ----------------------------------------------
@@ -160,6 +181,66 @@ impl Contract {
 
     pub fn refit(&mut self, captain: u16) -> Receipt {
         self.act(Action::Refit { captain })
+    }
+
+    // ---- the front door ----------------------------------------------------
+
+    /// Opens a game account for a new player. Only the contract's own front-door
+    /// key can call this, and it is capped per hour. The new account gets a little
+    /// testnet NEAR and a key that can only call this contract.
+    ///
+    /// With `identity` (the key NEAR Auth derives for a Google or email login),
+    /// the account name comes from that key and the login owns the account.
+    pub fn open_account(&mut self, public_key: PublicKey, identity: Option<PublicKey>) -> AccountId {
+        require!(
+            env::predecessor_account_id() == env::current_account_id(),
+            "only the front door opens accounts"
+        );
+        require!(
+            env::account_balance() > GRANT.saturating_mul(4).saturating_add(env::storage_byte_cost().saturating_mul(u128::from(env::storage_usage()))),
+            "the front door is closed for now"
+        );
+        let now = env::block_timestamp_ms();
+        if now.saturating_sub(self.window_started_ms) > HOUR_MS {
+            self.window_started_ms = now;
+            self.window_count = 0;
+        }
+        require!(self.window_count < ACCOUNTS_PER_HOUR, "too many new accounts this hour");
+        self.window_count += 1;
+        self.accounts_opened += 1;
+        // Names come from the key, so they are unique and survive a world reset.
+        let named_by = identity.as_ref().unwrap_or(&public_key);
+        let digest = env::sha256(named_by.as_bytes());
+        let short: String = digest[..8].iter().map(|b| format!("{b:02x}")).collect();
+        let prefix = if identity.is_some() { "id" } else { "p" };
+        let name = format!("{prefix}-{short}");
+        let id: AccountId = format!("{name}.{}", env::current_account_id())
+            .parse()
+            .unwrap_or_else(|_| env::panic_str("bad account name"));
+        let mut opening = Promise::new(id.clone())
+            .create_account()
+            .transfer(GRANT)
+            .add_access_key_allowance(
+                public_key,
+                Allowance::limited(GRANT).unwrap_or_else(|| env::panic_str("bad allowance")),
+                env::current_account_id(),
+                String::new(),
+            );
+        if let Some(key) = identity {
+            opening = opening.add_full_access_key(key);
+        }
+        let _ = opening;
+        id
+    }
+
+    /// The public front-door key, for any client that wants to open an account.
+    pub fn front_door(&self) -> Option<String> {
+        self.front_door.clone()
+    }
+
+    pub fn set_front_door(&mut self, key: Option<String>) {
+        require!(env::predecessor_account_id() == self.owner, "owner only");
+        self.front_door = key;
     }
 
     // ---- sea reports --------------------------------------------------------

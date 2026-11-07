@@ -6,7 +6,7 @@ import { NORMAL_WATCH_MS, PracticeDriver, WEEK_IN_A_MINUTE_MS } from "./engine";
 import type { Action, Driver, Receipt, View } from "./types";
 import Chart from "./ui/Chart";
 import Desk from "./ui/Desk";
-import { Notes, Report, StruckOff, Toasts, WeekReview, type Toast } from "./ui/Overlays";
+import { Collapse, Notes, Report, StruckOff, Toasts, WeekReview, type Fallen, type Toast } from "./ui/Overlays";
 import Side, { type Hood, type Tab } from "./ui/Side";
 import { crowns, eventLine, pct, when, watchName, type Line } from "./words";
 
@@ -26,6 +26,9 @@ interface Note {
 }
 
 const seen = new Set<string>();
+const SPIRAL_WATCHES = 28;
+
+const roomCapital = (view: View) => view.houses.filter((h) => h.active).reduce((sum, h) => sum + h.capital, 0);
 
 function useView(driver: Driver) {
   const [view, setView] = useState<View | null>(null);
@@ -44,12 +47,15 @@ export default function Game({ driver, houseName, hood, onExit, onSpiral, autopl
   const [notes, setNotes] = useState<Note[]>([]);
   const [flash, setFlash] = useState(0);
   const [muted, setMuted] = useState(sound.isMuted);
-  const [pace, setPace] = useState(autoplay ? NORMAL_WATCH_MS : 0);
+  const [pace, setPace] = useState(() => (driver instanceof PracticeDriver ? driver.pace() : NORMAL_WATCH_MS));
   const [error, setError] = useState<string | null>(null);
   const [priceTrail, setPriceTrail] = useState<Record<string, number[]>>({});
   const [week, setWeek] = useState<{ left: number; capital: number; wrecks: number; failed: number; rate: number } | null>(null);
   const [review, setReview] = useState<{ capital: number; wrecks: number; failed: number; rate: number } | null>(null);
   const [watching, setWatching] = useState(false);
+  const [collapse, setCollapse] = useState<{ fallen: Fallen[]; lost: number; watches: number; wrecks: number } | null>(null);
+  const spiralStart = useRef<{ watch: number; capital: number } | null>(null);
+  const fallenRef = useRef<Fallen[]>([]);
   const toastId = useRef(1);
   const lastSeq = useRef(0);
   const previous = useRef<View | null>(null);
@@ -81,8 +87,10 @@ export default function Game({ driver, houseName, hood, onExit, onSpiral, autopl
   useEffect(() => {
     if (!view || lastSeq.current) return;
     lastSeq.current = view.seq;
-    if (autoplay) practice?.setPace(NORMAL_WATCH_MS);
-    if (!spiral) {
+    if (spiral) {
+      setTab("room");
+      spiralStart.current = { watch: view.watch, capital: roomCapital(view) };
+    } else {
       note(
         "start",
         `Welcome to the Room, ${houseName}`,
@@ -90,7 +98,7 @@ export default function Game({ driver, houseName, hood, onExit, onSpiral, autopl
       );
     }
     previous.current = view;
-  }, [view, autoplay, houseName, note, practice, spiral]);
+  }, [view, houseName, note, spiral]);
 
   // Everything that happened since the last view.
   useEffect(() => {
@@ -162,6 +170,7 @@ export default function Game({ driver, houseName, hood, onExit, onSpiral, autopl
       }
       if (e.type === "house_failed") {
         const fallen = view.houses[e.house];
+        if (fallen) fallenRef.current = [...fallenRef.current, { name: fallen.name, watch: e.watch, owed: e.owed, paid: e.paid }];
         if (fallen?.you) {
           sound.bell(1);
         } else {
@@ -295,6 +304,20 @@ export default function Game({ driver, houseName, hood, onExit, onSpiral, autopl
   useEffect(() => {
     if (week && (week.left <= 0 || view?.intermission !== null)) finishWeek();
   }, [week, view?.intermission, finishWeek]);
+
+  // At the end of the spiral demo, explain what just happened.
+  useEffect(() => {
+    const start = spiralStart.current;
+    if (!spiral || !view || !start || collapse) return;
+    if (view.watch < start.watch + SPIRAL_WATCHES) return;
+    setSpeed(0);
+    setCollapse({
+      fallen: fallenRef.current,
+      lost: Math.max(0, start.capital - roomCapital(view)),
+      watches: SPIRAL_WATCHES,
+      wrecks: view.captains.reduce((sum, c) => sum + c.losses, 0),
+    });
+  }, [spiral, view, collapse, setSpeed]);
 
   // Keyboard.
   useEffect(() => {
@@ -432,6 +455,17 @@ export default function Game({ driver, houseName, hood, onExit, onSpiral, autopl
         priceTrail={priceTrail}
         hood={hood}
         practice={!!practice}
+        onSkip={() => {
+          if (!practice) return;
+          started.current = true;
+          setNotes([]);
+          void (async () => {
+            await driver.act({ kind: "set_clerk", on: true });
+            setSpeed(0);
+            practice.skip(Math.max(1, view.season_watches - view.watch));
+            await driver.act({ kind: "set_clerk", on: false }).catch(() => undefined);
+          })();
+        }}
         onRunWeek={runWeek}
         onSpiral={onSpiral}
         onSummon={() => {
@@ -441,7 +475,17 @@ export default function Game({ driver, houseName, hood, onExit, onSpiral, autopl
         }}
       />
 
-      {review && <WeekReview view={view} before={review} onClose={() => setReview(null)} />}
+      {review && (
+        <WeekReview
+          view={view}
+          before={review}
+          onClose={() => {
+            setReview(null);
+            setSpeed(NORMAL_WATCH_MS);
+          }}
+        />
+      )}
+      {collapse && <Collapse {...collapse} onClose={onExit} />}
       {view.intermission !== null && (
         <Report
           view={view}

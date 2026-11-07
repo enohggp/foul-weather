@@ -1,4 +1,4 @@
-﻿//! The same rules the contract runs, compiled for the browser.
+//! The same rules the contract runs, compiled for the browser.
 //!
 //! The page sends one JSON command at a time through `fw_call` and gets one JSON
 //! reply. A practice harbor lives here in memory, with no network and no chain.

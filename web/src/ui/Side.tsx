@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import type { Action, House, Position, View } from "../types";
 import { crowns, pct, priceReason, seaWord } from "../words";
 import { Flag, Seal, Spark } from "./bits";
+import PayPreview from "./PayPreview";
 
 export interface RouteReading {
   lane: string;
@@ -32,6 +33,7 @@ interface Props {
   onRunWeek: () => void;
   onSpiral: () => void;
   onSummon: () => void;
+  onSkip: () => void;
   practice: boolean;
 }
 
@@ -435,7 +437,7 @@ function Harbor({ view, you, act, busy, priceTrail }: Props) {
   );
 }
 
-function Under({ view, hood, onRunWeek, onSpiral, onSummon, practice }: Props) {
+function Under({ view, hood, onRunWeek, onSpiral, onSummon, onSkip, practice }: Props) {
   const tokens = view.positions.length + 7;
   return (
     <div className="pane hood">
@@ -449,6 +451,9 @@ function Under({ view, hood, onRunWeek, onSpiral, onSummon, practice }: Props) {
         </button>
         <button className="secondary" disabled={!practice} onClick={onSummon}>
           Summon a great storm
+        </button>
+        <button className="secondary" disabled={!practice} onClick={onSkip}>
+          Skip to the end of the season
         </button>
       </div>
 
@@ -520,6 +525,8 @@ function Under({ view, hood, onRunWeek, onSpiral, onSummon, practice }: Props) {
       ) : (
         <p className="muted small">Live reports are unavailable, so the sea is drifting on its own.</p>
       )}
+
+      <PayPreview />
 
       <h3>The books</h3>
       <dl className="facts">

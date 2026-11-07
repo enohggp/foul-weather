@@ -14,6 +14,10 @@
     "agent": "node scripts/agent-house.mjs"
   },
   "dependencies": {
+    "@fast-auth-near/browser-sdk": "^1.4.2",
+    "@fast-auth-near/javascript-provider": "^1.4.1",
+    "buffer": "^6.0.3",
+    "near-api-js": "^5.1.1",
     "near-kit": "^0.20.2",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"

@@ -56,11 +56,11 @@ async function priceCheck(asset: string, fetcher: typeof fetch): Promise<Quote["
  * The mapping from markets to water.
  * Choppy prices and thin routes make rough seas: 28 is an ordinary day, each
  * basis point of spread adds 1.2, and each basis point of recent price move
- * adds 3. A route that cannot be quoted at all counts as a gale. Storms stay
+ * adds 1.5. A route that cannot be quoted at all counts as a gale. Storms stay
  * the engine's job, so readings stop short of tempest.
  */
 export function seaFrom(spreadBps: number, moveBps: number): number {
-  return Math.round(Math.min(78, Math.max(8, 28 + spreadBps * 1.2 + moveBps * 3)));
+  return Math.round(Math.min(78, Math.max(8, 28 + spreadBps * 1.2 + moveBps * 1.5)));
 }
 
 export class SeaWatch {
