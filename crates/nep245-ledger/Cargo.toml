@@ -1,0 +1,11 @@
+[package]
+name = "nep245-ledger"
+description = "A small, SDK-free NEP-245 multi-token ledger with NEP-297 event logs. Runs inside a NEAR contract or a browser."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+borsh.workspace = true
+serde_json.workspace = true

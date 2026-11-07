@@ -1,0 +1,23 @@
+﻿[package]
+name = "foul-weather-contract"
+description = "Foul Weather on NEAR: one contract holds the world, its rules and every token (NEP-245)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+near-sdk = "5.29"
+foul-core = { path = "../core" }
+borsh.workspace = true
+serde.workspace = true
+
+[lints.rust.unexpected_cfgs]
+level = "warn"
+check-cfg = ['cfg(near)']
+
+[package.metadata.near.wasm-opt]
+enabled = true

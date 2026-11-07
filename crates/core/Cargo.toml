@@ -1,0 +1,15 @@
+[package]
+name = "foul-core"
+description = "Foul Weather's game engine. One deterministic rule set shared by the NEAR contract and the browser."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+borsh.workspace = true
+serde.workspace = true
+nep245-ledger = { path = "../nep245-ledger" }
+
+[dev-dependencies]
+serde_json = { version = "1" }

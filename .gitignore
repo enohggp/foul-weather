@@ -1,0 +1,13 @@
+target/
+node_modules/
+web/dist/
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials/
+.near-credentials/
+.DS_Store
+Thumbs.db
+*.log

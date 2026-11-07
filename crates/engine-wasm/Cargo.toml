@@ -1,0 +1,16 @@
+﻿[package]
+name = "foul-engine-wasm"
+description = "Foul Weather's rules compiled for the browser, with a small JSON interface."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+foul-core = { path = "../core" }
+borsh.workspace = true
+serde.workspace = true
+serde_json = { version = "1" }
