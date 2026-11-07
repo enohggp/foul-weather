@@ -4,13 +4,16 @@
   "private": true,
   "type": "module",
   "license": "MIT",
+  "engines": { "node": ">=24" },
   "scripts": {
     "dev": "vite --config web/vite.config.ts",
     "build": "vite build --config web/vite.config.ts",
     "preview": "vite preview --config web/vite.config.ts",
     "typecheck": "tsc --noEmit -p web/tsconfig.json",
+    "test": "cargo test -p nep245-ledger -p foul-core -p foul-engine-wasm",
+    "test:chain": "node scripts/e2e-contract.mjs",
     "verify": "node scripts/verify-chain.mjs",
-    "sea": "node scripts/sea-report.mjs",
+    "keeper": "node scripts/keeper.mjs",
     "agent": "node scripts/agent-house.mjs"
   },
   "dependencies": {

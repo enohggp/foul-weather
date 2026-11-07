@@ -344,6 +344,7 @@ function Room({ view, you, act, busy }: Props) {
             <tr key={h.id} className={`${h.you ? "you" : ""}${h.active ? "" : " dead"}`}>
               <td>
                 <Seal house={h} size={20} /> {h.name}
+                {h.kind === "agent" && <small className="tag-agent"> agent</small>}
               </td>
               <td className="num">{h.active ? crowns(h.capital) : "Struck off"}</td>
               <td className="num">{h.active ? crowns(h.net_book) : ""}</td>
@@ -351,6 +352,25 @@ function Room({ view, you, act, busy }: Props) {
           ))}
         </tbody>
       </table>
+      {view.hall.length > 0 && (
+        <>
+          <h3>Hall of the Room</h3>
+          <table className="houses">
+            <tbody>
+              {view.hall.slice(0, 5).map((entry) => (
+                <tr key={`${entry.season}-${entry.house}`}>
+                  <td>
+                    {entry.house}
+                    {entry.kind === "agent" && <small className="tag-agent"> agent</small>}
+                  </td>
+                  <td className="small">Season {entry.season}</td>
+                  <td className="num">{crowns(entry.capital)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
     </div>
   );
 }

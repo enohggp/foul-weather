@@ -27,7 +27,7 @@ Risk is a more interesting thing to trade than goods, and it's what real markets
 
 ## Try it in two minutes
 
-You need Node 22 or newer. Rust is not needed to play.
+You need Node 24 or newer. Rust is not needed to play.
 
 ```bash
 git clone <this repository>
@@ -49,7 +49,7 @@ Each step below says what to do and what you should see.
 7. **Do:** open **Under the hood** and press **Run a week in a minute**. **See:** a clerk runs your desk for a week, followed by charts of the market rate, Merrow's prices and the capital in the Room.
 8. **Do:** go back to the title, and press **Join the live Room**. **See:** the same game, shared and on NEAR testnet, with no wallet, popup or gas prompt. **Under the hood** links your account and your last transaction on an explorer.
 
-Sound is on by default. The bell button mutes it.
+Sound is on by default. The bell button mutes it. No Rust is needed for any of this, because the compiled rules are in `web/public/engine.wasm`.
 
 ## Check the chain without a wallet
 

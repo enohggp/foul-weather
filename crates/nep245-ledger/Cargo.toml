@@ -4,7 +4,6 @@ description = "A small, SDK-free NEP-245 multi-token ledger with NEP-297 event l
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-repository.workspace = true
 
 [dependencies]
 borsh.workspace = true

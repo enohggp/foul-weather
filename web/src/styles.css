@@ -1096,6 +1096,11 @@ td.down {
   color: var(--verdigris);
 }
 
+.tag-agent {
+  color: var(--verdigris);
+  font-family: var(--italic);
+}
+
 .spark {
   vertical-align: middle;
 }

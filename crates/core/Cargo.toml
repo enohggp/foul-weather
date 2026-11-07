@@ -4,7 +4,6 @@ description = "Foul Weather's game engine. One deterministic rule set shared by 
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-repository.workspace = true
 
 [dependencies]
 borsh.workspace = true
