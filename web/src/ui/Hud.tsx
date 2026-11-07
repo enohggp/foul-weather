@@ -183,11 +183,16 @@ export function Race({ view, wide = false }: { view: View; wide?: boolean }) {
   const open = view.houses.filter((h) => h.active).sort((a, b) => b.capital - a.capital);
   const closed = view.houses.filter((h) => !h.active);
   const top = open[0]?.capital || 1;
+  // In a busy live town the player's own shop always keeps a place on the list.
+  const everyone = [...open, ...closed];
+  const shown = everyone.slice(0, wide ? 12 : 9);
+  const mine = everyone.find((h) => h.you);
+  if (mine && !shown.includes(mine)) shown[shown.length - 1] = mine;
   return (
     <section className={`race${wide ? " wide" : ""}`} aria-label="All the shops">
       <h2>{wide ? "The shops in town" : "Who's winning?"}</h2>
       <ol>
-        {[...open, ...closed].slice(0, wide ? 12 : 9).map((h) => (
+        {shown.map((h) => (
           <li key={h.id} className={`${h.you ? "you" : ""}${h.active ? "" : " closed"}`} title={shopName(h.name)}>
             <ShopIcon colour={shopColour(view, h.id)} closed={!h.active} size={wide ? 38 : 30} />
             {wide ? (
