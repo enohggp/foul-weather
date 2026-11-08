@@ -201,6 +201,28 @@ pub const SLIP_WATCHES: u32 = 4;
 /// Watches a captain waits before trying again after sitting out.
 pub const REST_WATCHES: u32 = 2;
 
+// ---- People at the wheel ---------------------------------------------------------
+
+/// Watches a live ship waits in port for its player before the captain sails alone.
+pub const HELM_PATIENCE: u32 = 6;
+/// Trips a captain makes alone before the player counts as gone, and the wheel is free.
+pub const HELM_IDLE_TRIPS: u8 = 3;
+/// The most a person may offer for cover, the same limit a captain reaches on a retry.
+pub const MAX_OFFER_BPS: u16 = 2_400;
+/// How loud a deliberate sinking looks, against the sea's own dangers. A wreck in a
+/// storm is easy to hide. One in a flat calm is not.
+pub const SCUTTLE_TELL_BPS: u64 = 1_200;
+/// Chance that an inquiry finds the proof of a wreck that really was deliberate.
+pub const INQUIRY_CATCH_PCT: u64 = 85;
+/// The range of talk that follows any wreck with a person at the wheel, so a shop
+/// can't tell an honest loss from a sneaky one just by seeing that there is talk.
+pub const HONEST_TALK_PCT: (u64, u64) = (5, 45);
+
+/// How suspicious a deliberate wreck looks, in percent.
+pub fn scuttle_suspicion_pct(risk_bps: u64, storm_bps: u64) -> u8 {
+    (SCUTTLE_TELL_BPS * 100 / (SCUTTLE_TELL_BPS + risk_bps + storm_bps).max(1)).clamp(10, 90) as u8
+}
+
 /// Share of a voyage's expected profit a free-spending captain gives up for cover.
 pub const GIVES_UP_BASE_PCT: u64 = 30;
 
@@ -419,6 +441,12 @@ mod tests {
                 assert!(i32::from(hull).abs_diff(i32::from(belief)) <= u32::from(HULL_SPREAD) + 3);
             }
         }
+    }
+
+    #[test]
+    fn a_wreck_in_a_storm_is_easier_to_hide() {
+        assert!(scuttle_suspicion_pct(300, 0) > 70);
+        assert!(scuttle_suspicion_pct(300, 4_000) < 25);
     }
 
     #[test]

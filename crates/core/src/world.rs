@@ -43,6 +43,21 @@ pub struct Captain {
     pub losses: u16,
     pub frauds: u16,
     pub bond: Option<Bond>,
+    /// The person at the wheel. Without one, the captain runs by the rules alone.
+    pub helm: Option<Helm>,
+}
+
+/// A real player steering a captain's ship. The money stays in the captain's own
+/// wallet, which has no key, so only the rules can ever move it.
+#[derive(Clone, Debug, BorshSerialize, BorshDeserialize)]
+pub struct Helm {
+    pub acct: AccountIx,
+    pub name: String,
+    /// The captain's coins when this player took over, so that everyone is scored
+    /// on what they earned.
+    pub start_cash: u64,
+    /// Trips the captain has had to plan alone since the player last gave an order.
+    pub idle: u8,
 }
 
 /// A refit loan, repaid only out of successful voyages.
@@ -123,6 +138,8 @@ pub struct Slip {
     pub opened: u32,
     pub closes: u32,
     pub retried: bool,
+    /// Planned by a person. It sails when it closes, with whatever cover it has.
+    pub steered: bool,
     /// Set the moment a surveyor looks. Before that the hull does not exist as a number.
     pub hull: Option<u8>,
     pub surveyed_by: Vec<u16>,
@@ -146,6 +163,9 @@ pub struct Voyage {
     pub risk_bps: u16,
     pub scuttle_bps: u16,
     pub sea_at_sailing: u8,
+    pub steered: bool,
+    /// The person at the wheel has chosen to sink this ship for the money.
+    pub scuttled: bool,
 }
 
 /// One writer's promise to pay on one voyage. The promise itself is a NEP-245
@@ -187,6 +207,12 @@ pub struct Claim {
     pub inquired: bool,
     /// A house waiting for its inquiry to report at the next watch.
     pub inquiry_by: Option<u16>,
+    /// A person was at the wheel, so whether this was deliberate is a fact, not a
+    /// chance. Unlike a hull, a person's choice cannot be left undecided.
+    pub steered: bool,
+    pub deliberate: bool,
+    /// The rule-driven shops on this claim have decided whether to look into it.
+    pub weighed: bool,
 }
 
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize)]
@@ -244,6 +270,8 @@ pub enum Event {
     Fraud { claim: u32, captain: u16, house: u16, reward: u64 },
     HonestLoss { claim: u32, captain: u16, house: u16 },
     SeasonEnd { season: u32 },
+    HelmTaken { captain: u16 },
+    HelmLeft { captain: u16 },
 }
 
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize)]
@@ -392,6 +420,7 @@ impl World {
                 losses: 0,
                 frauds: 0,
                 bond: None,
+                helm: None,
             });
         }
 
@@ -454,6 +483,14 @@ impl World {
     pub fn house_of(&self, account: &str) -> Option<usize> {
         let acct = self.ledger.find_account(account)?;
         self.houses.iter().position(|h| h.acct == acct)
+    }
+
+    /// The captain this account is steering, if any.
+    pub fn helm_of(&self, account: &str) -> Option<usize> {
+        let acct = self.ledger.find_account(account)?;
+        self.captains
+            .iter()
+            .position(|c| c.helm.as_ref().is_some_and(|h| h.acct == acct))
     }
 
     pub fn season_length(&self) -> u32 {

@@ -47,6 +47,9 @@ export interface Captain {
   losses: number;
   frauds: number;
   bond_owed: number;
+  /** The name of the real person steering this ship, if there is one. */
+  player: string | null;
+  start_cash: number;
 }
 
 export type HouseKind = { room: number } | "entrant" | "player" | "agent";
@@ -100,6 +103,7 @@ export interface Slip {
   opened: number;
   closes: number;
   retried: boolean;
+  steered: boolean;
   risk_low_bps: number;
   risk_high_bps: number;
   storm_bps: number;
@@ -217,7 +221,37 @@ export type GameEvent = { seq: number; watch: number } & (
   | { type: "fraud"; claim: number; captain: number; house: number; reward: number }
   | { type: "honest_loss"; claim: number; captain: number; house: number }
   | { type: "season_end"; season: number }
+  | { type: "helm_taken"; captain: number }
+  | { type: "helm_left"; captain: number }
 );
+
+/** One trip a player at the wheel could make from where the ship is now. */
+export interface Trip {
+  lane: number;
+  to: number;
+  good: number;
+  good_name: string;
+  qty: number;
+  cost: number;
+  revenue: number;
+  provisions: number;
+  sum_insured: number;
+  fair_offer_bps: number;
+  risk_bps: number;
+  storm: boolean;
+  watches: number;
+}
+
+export interface Helm {
+  captain: number;
+  start_cash: number;
+  trips: Trip[];
+  can_sail: boolean;
+  ready: boolean;
+}
+
+/** Who a player has chosen to be. */
+export type Role = { kind: "shop" } | { kind: "captain"; captain: number };
 
 export interface View {
   season: number;
@@ -249,6 +283,7 @@ export interface View {
     reckoning_watches: number;
     max_gearing: number;
   };
+  helm: Helm | null;
 }
 
 export type Action =
@@ -259,6 +294,12 @@ export type Action =
   | { kind: "take_cession"; offer: number }
   | { kind: "inquiry"; claim: number }
   | { kind: "refit"; captain: number }
+  | { kind: "take_helm"; name: string; captain: number }
+  | { kind: "leave_helm" }
+  | { kind: "plan_trip"; lane: number; offer_bps: number }
+  | { kind: "cancel_trip" }
+  | { kind: "sail_now" }
+  | { kind: "scuttle" }
   | { kind: "set_clerk"; on: boolean }
   | { kind: "summon_storm" }
   | { kind: "next_season" };

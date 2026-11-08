@@ -4,7 +4,7 @@
 // keeps its key on this device, and signs each move without showing a wallet.
 
 import { generateKey, Near } from "near-kit";
-import type { Action, Driver, Receipt, View } from "./types";
+import type { Action, Driver, Receipt, Role, View } from "./types";
 
 export const CONTRACT: string = import.meta.env.VITE_FW_CONTRACT ?? "foulweather-harbor.testnet";
 export const EXPLORER = "https://testnet.nearblocks.io";
@@ -37,22 +37,24 @@ interface Outcome {
   status: { SuccessValue?: string };
 }
 
-function storeKey(identity?: string) {
-  return identity ? `${STORE_KEY}:${identity}` : STORE_KEY;
+/** A guest gets a separate account for each role, so one device can try both sides. */
+function storeKey(role: Role, identity?: string) {
+  const base = identity ? `${STORE_KEY}:${identity}` : STORE_KEY;
+  return role.kind === "captain" && !identity ? `${base}:captain` : base;
 }
 
-function loadAccount(identity?: string): Saved | null {
+function loadAccount(role: Role, identity?: string): Saved | null {
   try {
-    const raw = localStorage.getItem(storeKey(identity));
+    const raw = localStorage.getItem(storeKey(role, identity));
     return raw ? (JSON.parse(raw) as Saved) : null;
   } catch {
     return null;
   }
 }
 
-function saveAccount(account: Saved, identity?: string) {
+function saveAccount(account: Saved, role: Role, identity?: string) {
   try {
-    localStorage.setItem(storeKey(identity), JSON.stringify(account));
+    localStorage.setItem(storeKey(role, identity), JSON.stringify(account));
   } catch {
     // Without storage this house only lasts as long as the tab.
   }
@@ -141,6 +143,18 @@ function methodFor(action: Action): { method: string; args: object } | null {
       return { method: "inquiry", args: { claim: action.claim } };
     case "refit":
       return { method: "refit", args: { captain: action.captain } };
+    case "take_helm":
+      return { method: "take_helm", args: { name: action.name, captain: action.captain } };
+    case "leave_helm":
+      return { method: "leave_helm", args: {} };
+    case "plan_trip":
+      return { method: "plan_trip", args: { lane: action.lane, offer_bps: action.offer_bps } };
+    case "cancel_trip":
+      return { method: "cancel_trip", args: {} };
+    case "sail_now":
+      return { method: "sail_now", args: {} };
+    case "scuttle":
+      return { method: "scuttle", args: {} };
     default:
       return null;
   }
@@ -163,32 +177,43 @@ export class LiveDriver implements Driver {
   /** Hash of the player's latest transaction, for the "Under the hood" panel. */
   onTransaction: ((hash: string) => void) | null = null;
 
-  private constructor(private near: Near, readonly accountId: string, houseName: string) {
+  private constructor(
+    private near: Near,
+    readonly accountId: string,
+    houseName: string,
+    private role: Role,
+  ) {
     this.houseName = houseName;
   }
 
-  /** Opens or reopens this device's account and house. */
+  /** A look at the town with no account, to choose a role and a ship. */
+  static async peek(): Promise<View | null> {
+    return (await new Near({ network }).view<View>(CONTRACT, "get_view", { viewer: null }, LATEST)) ?? null;
+  }
+
+  /** Opens or reopens this device's account, and takes up the chosen role. */
   static async connect(
     houseName: string,
     progress: (message: string) => void,
+    role: Role,
     identity?: string,
   ): Promise<LiveDriver> {
-    let account = loadAccount(identity);
+    let account = loadAccount(role, identity);
     if (!account) {
-      progress("Opening your account in the Room…");
+      progress("Opening your account…");
       account = await createAccount(identity);
-      saveAccount(account, identity);
+      saveAccount(account, role, identity);
     }
     const near = new Near({
       network,
       privateKey: account.secretKey as `ed25519:${string}`,
       defaultSignerId: account.accountId,
     });
-    const driver = new LiveDriver(near, account.accountId, houseName);
-    progress("Walking into the Room…");
+    const driver = new LiveDriver(near, account.accountId, houseName, role);
+    progress("Heading down to the harbor…");
     await driver.refresh();
-    if (!driver.view) throw new Error("The Room is not answering. Try practice mode.");
-    await driver.ensureHouse();
+    if (!driver.view) throw new Error("The harbor is not answering. Try practice mode.");
+    await driver.ensureRole();
     const key = await near.view<string>(CONTRACT, "tick_key", {}, LATEST).catch(() => null);
     if (key) driver.ticker = new Near({ network, privateKey: key as `ed25519:${string}`, defaultSignerId: CONTRACT });
     driver.schedule();
@@ -199,9 +224,20 @@ export class LiveDriver implements Driver {
     return this.view?.houses.find((h) => h.you);
   }
 
-  private async ensureHouse() {
-    if (this.you() || this.view?.intermission !== null) return;
-    await this.send("found_house", { name: this.houseName, agent: false });
+  /** Takes up the player's role, now and again after each new season. */
+  private async ensureRole() {
+    const view = this.view;
+    if (!view || view.intermission !== null) return;
+    if (this.role.kind === "shop") {
+      if (this.you()) return;
+      await this.send("found_house", { name: this.houseName, agent: false });
+    } else {
+      if (view.helm) return;
+      const wanted = this.role.captain;
+      const free = view.captains.find((c) => c.id === wanted && !c.player) ?? view.captains.find((c) => !c.player);
+      if (!free) throw new Error("Every ship has a player right now. Try running a shop!");
+      await this.send("take_helm", { name: this.houseName, captain: free.id });
+    }
     await this.refresh();
   }
 
@@ -249,7 +285,7 @@ export class LiveDriver implements Driver {
         if (key !== this.lastSeq) {
           this.lastSeq = key;
           await this.refresh();
-          await this.ensureHouse();
+          await this.ensureRole();
         }
         // Anyone may move the world on. A little jitter keeps players from colliding.
         const due = Number(status.next_tick_ms) + Math.random() * 1500;

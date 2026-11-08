@@ -11,6 +11,8 @@ export interface Moment {
   ship: string;
   captain: number;
   amount: number;
+  /** The second line of the captain's bubble, when the player is the captain. */
+  note?: string;
 }
 
 const SECONDS = { wreck: 6.5, home: 3.4 };
@@ -52,7 +54,7 @@ export function Theatre({ moment, onDone }: { moment: Moment; onDone: () => void
         <span className="bubble">
           {lost ? cast.sad : cast.thanks}
           <b>
-            <Coin size={22} /> {lost ? `You pay ${moment.amount.toLocaleString("en-US")} coins` : "The coins are yours!"}
+            <Coin size={22} /> {moment.note ?? (lost ? `You pay ${moment.amount.toLocaleString("en-US")} coins` : "The coins are yours!")}
           </b>
         </span>
       </span>

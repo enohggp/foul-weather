@@ -80,6 +80,8 @@ Practice mode reads these directly from the browser. The live world gets them fr
 
 ## NEAR AI Cloud and agents
 
+People can also steer the captains. `take_helm`, `plan_trip`, `sail_now`, `cancel_trip`, `scuttle` and `leave_helm` let a player sail one captain's ship while the money stays in that captain's keyless wallet, so only the rules can move it. The captain's wallet earns or loses, and the player is scored on the difference since they took the wheel.
+
 Any agent can run a house through the public contract methods. `scripts/agent-house.mjs` is a complete house in about 100 lines. It opens its own account, plays by simple rules with no setup, and uses NEAR AI Cloud for decisions if `NEAR_AI_API_KEY` is set. Agent houses are marked as such and appear in the Room beside human ones.
 
 ## What this does for NEAR

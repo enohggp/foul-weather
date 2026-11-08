@@ -639,15 +639,17 @@ interface Props {
   inset: { left: number; top: number; bottom: number };
   level: number;
   onFit: (fit: Fit) => void;
+  /** Set when the player is a captain: the ship with the gold ring. */
+  myCaptain?: number;
 }
 
-export default function Chart({ view, driver, flash, built, level, inset, onFit }: Props) {
+export default function Chart({ view, driver, flash, built, level, inset, onFit, myCaptain }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
-  const latest = useRef({ view, built, level, inset });
+  const latest = useRef({ view, built, level, inset, myCaptain });
   const flashAt = useRef(0);
   const [hover, setHover] = useState<Hover | null>(null);
-  latest.current = { view, built, level, inset };
+  latest.current = { view, built, level, inset, myCaptain };
 
   useEffect(() => {
     if (flash) flashAt.current = performance.now();
@@ -699,7 +701,7 @@ export default function Chart({ view, driver, flash, built, level, inset, onFit 
 
     const render = (now: number) => {
       frame = requestAnimationFrame(render);
-      const { view: v, built: decor, level: rank } = latest.current;
+      const { view: v, built: decor, level: rank, myCaptain: captain } = latest.current;
       const t = now / 1000;
       const length = driver.watchLength() || v.watch_ms;
       const running = driver.watchLength() > 0;
@@ -707,6 +709,7 @@ export default function Chart({ view, driver, flash, built, level, inset, onFit 
       const clock = v.watch + into;
       const you = v.houses.find((h) => h.you);
       const mine = new Set(v.positions.filter((p) => you && p.writer === you.id).map((p) => p.voyage));
+      for (const voyage of v.voyages) if (voyage.captain === captain) mine.add(voyage.id);
 
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.drawImage(world, 0, 0);
@@ -749,7 +752,9 @@ export default function Chart({ view, driver, flash, built, level, inset, onFit 
         shop(ctx, x, y, 0.9, AWNINGS[i % AWNINGS.length], !h.active, false);
       });
       // Your shop grows with you.
-      shop(ctx, YOUR_SHOP[0], YOUR_SHOP[1], 1.14 + Math.min(rank, 8) * 0.06, YOUR_AWNING, you ? !you.active : false, true);
+      if (captain === undefined) {
+        shop(ctx, YOUR_SHOP[0], YOUR_SHOP[1], 1.14 + Math.min(rank, 8) * 0.06, YOUR_AWNING, you ? !you.active : false, true);
+      }
       decorations(ctx, decor, t);
 
       // Volcano smoke.
@@ -802,6 +807,20 @@ export default function Chart({ view, driver, flash, built, level, inset, onFit 
           t: t + voyage.id,
         });
         drawn.push({ x: p.x, y: p.y - 10, voyage });
+
+        // A ship with a real person at the wheel carries their name.
+        const player = v.captains[voyage.captain]?.player;
+        if (player) {
+          const label = voyage.captain === captain ? "You" : player;
+          ctx.font = `600 15px "Fredoka", sans-serif`;
+          ctx.textAlign = "center";
+          ctx.lineJoin = "round";
+          ctx.lineWidth = 5;
+          ctx.strokeStyle = "#fff";
+          ctx.strokeText(label, p.x, p.y - 42);
+          ctx.fillStyle = "#1b75ab";
+          ctx.fillText(label, p.x, p.y - 42);
+        }
       });
 
       // Weather.
@@ -953,6 +972,7 @@ export default function Chart({ view, driver, flash, built, level, inset, onFit 
           <Character id={hover.voyage.captain} size={52} mood={atRisk ? "cheer" : "happy"} />
           <span>
             <b>{fullName(hover.voyage.captain)}</b>
+            {view.captains[hover.voyage.captain]?.player && <span className="tip-mine">Played by {view.captains[hover.voyage.captain].player}</span>}
             <span>{hover.voyage.qty > 0 ? `Carrying ${cargo(hover.voyage.qty, hover.voyage.good_name)}` : "Sailing empty"}</span>
             {atRisk > 0 && <span className="tip-mine">You protect this ship</span>}
           </span>

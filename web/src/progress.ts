@@ -82,6 +82,16 @@ export const QUESTS: Quest[] = [
   { id: "season", text: "Reach the Harbor Festival with your shop open", count: "seasons", target: 1, stars: 15 },
 ];
 
+/** A captain's goals. Earnings count from the moment the player took the wheel. */
+export const CAPTAIN_QUESTS: Quest[] = [
+  { id: "cap-first", text: "Finish your first trip", count: "trips", target: 1, stars: 3 },
+  { id: "cap-shield", text: "Sail with a shop protecting you", count: "protectedTrips", target: 1, stars: 3 },
+  { id: "cap-five", text: "Finish 5 trips", count: "trips", target: 5, stars: 5 },
+  { id: "cap-earn1", text: "Earn 1,000 coins as captain", count: "earned", target: 1000, stars: 5 },
+  { id: "cap-ten", text: "Finish 10 trips", count: "trips", target: 10, stars: 8 },
+  { id: "cap-earn3", text: "Earn 3,000 coins as captain", count: "earned", target: 3000, stars: 8 },
+];
+
 export interface Build {
   id: string;
   name: string;

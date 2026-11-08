@@ -212,6 +212,33 @@ impl Contract {
         self.act(Action::Refit { captain })
     }
 
+    /// Takes the wheel of a captain's ship. One person, one role, at a time.
+    pub fn take_helm(&mut self, name: String, captain: u16) -> Receipt {
+        self.act(Action::TakeHelm { name, captain })
+    }
+
+    pub fn leave_helm(&mut self) -> Receipt {
+        self.act(Action::LeaveHelm)
+    }
+
+    /// Plans the next trip and asks the shops for cover, up to `offer_bps`.
+    pub fn plan_trip(&mut self, lane: u8, offer_bps: u16) -> Receipt {
+        self.act(Action::PlanTrip { lane, offer_bps })
+    }
+
+    pub fn cancel_trip(&mut self) -> Receipt {
+        self.act(Action::CancelTrip)
+    }
+
+    pub fn sail_now(&mut self) -> Receipt {
+        self.act(Action::SailNow)
+    }
+
+    /// Sinks your own protected ship for the money. Shops may look into it.
+    pub fn scuttle(&mut self) -> Receipt {
+        self.act(Action::Scuttle)
+    }
+
     // ---- the front door ----------------------------------------------------
 
     /// Opens a game account for a new player. Only the contract's own front-door

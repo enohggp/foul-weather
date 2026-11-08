@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import * as sound from "./audio";
 import { CAST, fullName, shopName } from "./cast";
 import { NORMAL_WATCH_MS, PracticeDriver, SPIRAL_MS, WEEK_IN_A_MINUTE_MS } from "./engine";
+import { useNarrow, useView } from "./hooks";
 import { BUILDS, levelOf, loadProgress, QUESTS, saveProgress, SKILL, UNLOCKS, unlocked, type Progress } from "./progress";
 import type { Action, Driver, GameEvent, Position, Receipt, Slip, View } from "./types";
 import lines from "./pipLines.json";
@@ -67,22 +68,6 @@ const LESSON_VOICE = ["c0", "c1", "c2", "c3", "c4", "ready", "ring", "collect", 
 const SPOT = ["", "earn", "lose", "danger", "yes"];
 
 const roomCoins = (view: View) => view.houses.filter((h) => h.active).reduce((sum, h) => sum + h.capital, 0);
-
-function useView(driver: Driver) {
-  const [view, setView] = useState<View | null>(null);
-  useEffect(() => driver.subscribe(setView), [driver]);
-  return view;
-}
-
-function useNarrow() {
-  const [narrow, setNarrow] = useState(() => window.innerWidth < 900);
-  useEffect(() => {
-    const check = () => setNarrow(window.innerWidth < 900);
-    window.addEventListener("resize", check);
-    return () => window.removeEventListener("resize", check);
-  }, []);
-  return narrow;
-}
 
 export default function Game({ driver, houseName, hood, onExit, onSpiral, spiral }: Props) {
   const view = useView(driver);
@@ -325,7 +310,8 @@ export default function Game({ driver, houseName, hood, onExit, onSpiral, spiral
         setQueue((q) => [...q, { id: momentId.current++, kind: "wreck", ship: view.captains[e.captain].ship, captain: e.captain, amount }]);
         once(pip("wreck"));
       }
-      if (e.type === "claim_due" && me && e.suspicion >= 8 && unlocked(progressRef.current.xp, SKILL.detective)) {
+      const realPlayer = "captain" in e && !!view.captains[e.captain]?.player;
+      if (e.type === "claim_due" && me && e.suspicion >= 8 && (realPlayer || unlocked(progressRef.current.xp, SKILL.detective))) {
         const claim = view.claims.find((c) => c.id === e.claim);
         if (claim && view.positions.some((p) => p.voyage === claim.voyage && p.writer === me.id)) {
           speak({
@@ -438,6 +424,8 @@ export default function Game({ driver, houseName, hood, onExit, onSpiral, spiral
       }
       if (me.active) grow(null, 0, 0, me.capital);
     }
+
+    if (view.slips.some((s) => s.qty > 0 && view.captains[s.captain]?.player)) once(pip("shopreal"));
 
     const merrow = view.ports[0];
     setPriceTrail((trail) => {

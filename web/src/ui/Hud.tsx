@@ -35,6 +35,8 @@ interface BarProps {
   paused: boolean;
   fast: boolean;
   canPace: boolean;
+  /** Shown instead of the shop's coins when the player is a captain. */
+  coins?: number;
   onPause: () => void;
   onPlay: () => void;
   onFast: () => void;
@@ -43,8 +45,8 @@ interface BarProps {
   onHome: () => void;
 }
 
-export function TopBar({ view, you, progress, paused, fast, canPace, onPause, onPlay, onFast, onBuild, onLedger, onHome }: BarProps) {
-  const coins = useCounting(you?.capital ?? 0);
+export function TopBar({ view, you, coins: captainCoins, progress, paused, fast, canPace, onPause, onPlay, onFast, onBuild, onLedger, onHome }: BarProps) {
+  const coins = useCounting(captainCoins ?? you?.capital ?? 0);
   const { level, into, need } = levelOf(progress.xp);
   const day = Math.floor(view.watch / view.watches_per_day) + 1;
   const total = view.season_watches / view.watches_per_day;
@@ -66,7 +68,7 @@ export function TopBar({ view, you, progress, paused, fast, canPace, onPause, on
       </div>
 
       <div className="pill coins" title="Your coins">
-        <Coin size={28} /> <strong key={you?.capital}>{crowns(coins)}</strong>
+        <Coin size={28} /> <strong key={captainCoins ?? you?.capital}>{crowns(coins)}</strong>
       </div>
       <div className="pill stars" title="Stars buy decorations">
         <Star size={26} /> <strong>{progress.stars}</strong>
@@ -153,8 +155,8 @@ function questValue(q: Quest, progress: Progress, coins: number) {
   return q.count === "coins" ? coins : (progress.counts[q.count] ?? 0);
 }
 
-export function Quests({ progress, coins }: { progress: Progress; coins: number }) {
-  const q = QUESTS.find((quest) => !progress.doneQuests.includes(quest.id));
+export function Quests({ progress, coins, list = QUESTS }: { progress: Progress; coins: number; list?: Quest[] }) {
+  const q = list.find((quest) => !progress.doneQuests.includes(quest.id));
   if (!q) return null;
   const value = Math.min(q.target, questValue(q, progress, coins));
   return (

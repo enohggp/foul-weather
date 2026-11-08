@@ -10,19 +10,25 @@ use std::collections::BTreeMap;
 const MAX_POSITIONS_PER_VOYAGE: usize = 9;
 
 /// A voyage a captain is considering.
-struct Plan {
-    lane: usize,
-    outbound: bool,
-    good: usize,
-    qty: u32,
-    cost: u64,
-    revenue: u64,
-    provisions: u64,
-    score: i64,
+pub(crate) struct Plan {
+    pub lane: usize,
+    pub outbound: bool,
+    pub good: usize,
+    pub qty: u32,
+    pub cost: u64,
+    pub revenue: u64,
+    pub provisions: u64,
+    pub score: i64,
 }
 
 pub fn lane_of_port(port: usize) -> usize {
     LANES.iter().position(|l| l.port == port).unwrap_or(0)
+}
+
+/// Which way a ship leaving this port is heading, and what it carries.
+pub(crate) fn trip_goods(port: usize) -> (bool, usize) {
+    let outbound = port == HUB;
+    (outbound, if outbound { WARES } else { PORTS[port].makes })
 }
 
 impl World {
@@ -182,7 +188,7 @@ impl World {
             let storm = self.storm_now(lane).map(|s| u64::from(s.strength_bps)).unwrap_or(0);
             let storm_hazard = rules::storm_hazard_bps(storm, hull);
             let hazard = (risk + scuttle) / u64::from(watches) + storm_hazard;
-            if r.chance_bps(hazard) {
+            if self.voyages[i].scuttled || r.chance_bps(hazard) {
                 self.wreck(i, storm_hazard, r);
             } else if self.watch >= arrives {
                 self.arrive(i, r);
@@ -214,7 +220,14 @@ impl World {
         // have sunk this ship on this crossing.
         let watches = u64::from(LANES[lane].watches);
         let total = u64::from(v.risk_bps) + u64::from(v.scuttle_bps) + storm_hazard * watches;
-        let suspicion = (u64::from(v.scuttle_bps) * 100 / total.max(1)).min(95) as u8;
+        let suspicion = if v.scuttled {
+            rules::scuttle_suspicion_pct(u64::from(v.risk_bps), storm_hazard * watches)
+        } else if v.steered {
+            let (low, high) = rules::HONEST_TALK_PCT;
+            r.range(low, high) as u8
+        } else {
+            (u64::from(v.scuttle_bps) * 100 / total.max(1)).min(95) as u8
+        };
 
         self.log(Event::Wrecked {
             voyage: v.id,
@@ -238,6 +251,9 @@ impl World {
                 suspicion,
                 inquired: false,
                 inquiry_by: None,
+                steered: v.steered,
+                deliberate: v.scuttled,
+                weighed: !v.steered,
             });
             self.captains[c].state = CaptainState::Ashore { port };
             self.log(Event::ClaimDue { claim: id, captain: v.captain, sum: covered, suspicion });
@@ -529,9 +545,41 @@ impl World {
         estimate
     }
 
+    /// Rule-driven shops look into a wreck when a person was at the wheel, more often
+    /// the worse it looks. Rule-driven captains are never looked into by the Room.
+    fn weigh_claims(&mut self, r: &mut Rng) {
+        for ix in 0..self.claims.len() {
+            if self.claims[ix].weighed {
+                continue;
+            }
+            self.claims[ix].weighed = true;
+            let claim = self.claims[ix].clone();
+            if claim.inquired || r.below(100) >= u64::from(claim.suspicion) {
+                continue;
+            }
+            let stake = self
+                .positions
+                .iter()
+                .filter(|p| p.voyage == claim.voyage && self.houses[usize::from(p.writer)].is_auto())
+                .max_by_key(|p| p.sum)
+                .map(|p| usize::from(p.writer));
+            let Some(h) = stake else { continue };
+            let acct = self.houses[h].acct;
+            if self.cash(acct) < rules::INQUIRY_FEE {
+                continue;
+            }
+            self.ledger
+                .transfer(self.crown, acct, self.guild, u128::from(rules::INQUIRY_FEE))
+                .expect("the fee was checked against cash");
+            self.claims[ix].inquired = true;
+            self.claims[ix].inquiry_by = Some(h as u16);
+        }
+    }
+
     fn room_tick(&mut self, r: &mut Rng) {
         let watch = self.watch;
         self.offers.retain(|o| o.expires > watch);
+        self.weigh_claims(r);
 
         // Houses over their retention pass risk along.
         for h in 0..self.houses.len() {
@@ -783,7 +831,7 @@ impl World {
         let covered = BPS - remaining;
 
         let enough = covered >= u64::from(rules::min_cover_bps(def.nerve));
-        if enough || (slip.retried && def.nerve >= 60 && cash >= slip.provisions) {
+        if slip.steered || enough || (slip.retried && def.nerve >= 60 && cash >= slip.provisions) {
             self.sail(slip, fills, r);
             return;
         }
@@ -799,7 +847,7 @@ impl World {
     }
 
     /// The captain gives up, sells the cargo back at a loss, and waits ashore.
-    fn withdraw(&mut self, slip: Slip) {
+    pub(crate) fn withdraw(&mut self, slip: Slip) {
         let c = usize::from(slip.captain);
         let acct = self.captains[c].acct;
         let good = usize::from(slip.good);
@@ -869,7 +917,8 @@ impl World {
 
         let covered_sum = rules::of_bps(slip.sum_insured, u64::from(covered));
         let cash_after = self.cash(acct);
-        let scuttle = rules::scuttle_risk_bps(cash_after, covered_sum, hull, def.shady);
+        // A person decides this for themselves, so the rules don't roll for it.
+        let scuttle = if slip.steered { 0 } else { rules::scuttle_risk_bps(cash_after, covered_sum, hull, def.shady) };
         let voyage = Voyage {
             id,
             captain: slip.captain,
@@ -886,6 +935,8 @@ impl World {
             risk_bps: risk.min(u64::from(u16::MAX)) as u16,
             scuttle_bps: scuttle.min(u64::from(u16::MAX)) as u16,
             sea_at_sailing: sea,
+            steered: slip.steered,
+            scuttled: false,
         };
         self.voyages.push(voyage);
         self.captains[c].state = CaptainState::Sailing { voyage: id };
@@ -903,7 +954,9 @@ impl World {
         for c in 0..self.captains.len() {
             match self.captains[c].state {
                 CaptainState::AtPort { port, ready_at } if self.watch >= ready_at => {
-                    self.plan_voyage(c, usize::from(port), r);
+                    if !self.waiting_for_helm(c, ready_at) {
+                        self.plan_voyage(c, usize::from(port), r);
+                    }
                 }
                 CaptainState::Ashore { .. } => self.rebuild(c, r),
                 CaptainState::LaidUp { since, .. } => {
@@ -914,6 +967,57 @@ impl World {
                 _ => {}
             }
         }
+    }
+
+    /// A ship with a person at the wheel waits for them. In a live town it won't wait
+    /// for ever, so one player leaving never holds up the harbor: the captain sails
+    /// alone for a while, then the wheel is free for someone else.
+    fn waiting_for_helm(&mut self, c: usize, ready_at: u32) -> bool {
+        if self.captains[c].helm.is_none() {
+            return false;
+        }
+        let closing = self.watch + rules::LAST_SAILING_BEFORE_END > self.season_length();
+        if self.cfg.sandbox || closing || self.watch < ready_at + rules::HELM_PATIENCE {
+            return true;
+        }
+        let gone = self.captains[c].helm.as_mut().is_some_and(|helm| {
+            helm.idle += 1;
+            helm.idle >= rules::HELM_IDLE_TRIPS
+        });
+        if gone {
+            self.captains[c].helm = None;
+            self.log(Event::HelmLeft { captain: c as u16 });
+        }
+        false
+    }
+
+    /// A trip chosen by the person at the wheel.
+    pub(crate) fn plan_steered_trip(&mut self, c: usize, lane: usize, offer_bps: u16) -> Result<(), String> {
+        let CaptainState::AtPort { port, ready_at } = self.captains[c].state else {
+            return Err("your ship is not in port".into());
+        };
+        let port = usize::from(port);
+        if self.watch < ready_at {
+            return Err("your crew needs a moment".into());
+        }
+        if self.watch + rules::LAST_SAILING_BEFORE_END > self.season_length() {
+            return Err("it is too close to the Harbor Festival to set out".into());
+        }
+        if port != HUB && lane != lane_of_port(port) {
+            return Err("from here you can only sail back to Merrow".into());
+        }
+        self.maintain(c);
+        let acct = self.captains[c].acct;
+        let cash = self.cash(acct);
+        if cash < rules::WORKING_CASH {
+            self.captains[c].state = CaptainState::LaidUp { port: port as u8, since: self.watch };
+            self.log(Event::LaidUp { captain: c as u16 });
+            return Ok(());
+        }
+        let (outbound, good) = trip_goods(port);
+        let plan = self.trip_plan(c, port, lane, outbound, good, cash);
+        self.open_slip(c, port, plan, Some(offer_bps));
+        Ok(())
     }
 
     /// The richest Room house takes a stake in a captain nobody else has helped.
@@ -974,8 +1078,7 @@ impl World {
             if self.storm_near(lane, watches).is_some() && def.nerve < 45 {
                 continue;
             }
-            let outbound = port == HUB;
-            let good = if outbound { WARES } else { PORTS[port].makes };
+            let (outbound, good) = trip_goods(port);
             let plan = self.cost_voyage(c, port, lane, outbound, good, cash, r);
             if best.as_ref().is_none_or(|b| plan.score > b.score) {
                 best = Some(plan);
@@ -985,7 +1088,7 @@ impl World {
             self.captains[c].state = CaptainState::AtPort { port: port as u8, ready_at: self.watch + 1 };
             return;
         };
-        self.open_slip(c, port, plan);
+        self.open_slip(c, port, plan, None);
     }
 
     fn maintain(&mut self, c: usize) {
@@ -1010,6 +1113,15 @@ impl World {
 
     #[allow(clippy::too_many_arguments)]
     fn cost_voyage(&self, c: usize, port: usize, lane: usize, outbound: bool, good: usize, cash: u64, r: &mut Rng) -> Plan {
+        let mut plan = self.trip_plan(c, port, lane, outbound, good, cash);
+        if plan.qty > 0 {
+            plan.score = plan.score * r.wobble_pct(25) as i64 / 100;
+        }
+        plan
+    }
+
+    /// What a trip would cost and earn, at today's prices.
+    pub(crate) fn trip_plan(&self, c: usize, port: usize, lane: usize, outbound: bool, good: usize, cash: u64) -> Plan {
         let def = &CAPTAINS[c];
         let dest = if outbound { LANES[lane].port } else { HUB };
         let watches = LANES[lane].watches;
@@ -1049,11 +1161,13 @@ impl World {
             cost,
             revenue,
             provisions,
-            score: profit * r.wobble_pct(25) as i64 / 100,
+            score: profit,
         }
     }
 
-    fn open_slip(&mut self, c: usize, port: usize, plan: Plan) {
+    /// Buys the cargo and asks for cover. A person's own offer takes the place of the
+    /// captain's, and an offer of zero sails bare at the next watch.
+    pub(crate) fn open_slip(&mut self, c: usize, port: usize, plan: Plan, chosen_offer: Option<u16>) {
         let def = &CAPTAINS[c];
         let acct = self.captains[c].acct;
         if plan.qty > 0 {
@@ -1067,14 +1181,18 @@ impl World {
                 .expect("cost was capped at cash");
         }
         let sum_insured = plan.revenue + rules::hull_value(def.capacity);
-        let offer_bps = rules::captain_offer_bps(&rules::OfferInputs {
-            revenue: plan.revenue,
-            cargo_cost: plan.cost,
-            provisions: plan.provisions,
-            sum_insured,
-            thrift: def.thrift,
-            cash: self.cash(acct),
+        let offer_bps = chosen_offer.unwrap_or_else(|| {
+            rules::captain_offer_bps(&rules::OfferInputs {
+                revenue: plan.revenue,
+                cargo_cost: plan.cost,
+                provisions: plan.provisions,
+                sum_insured,
+                thrift: def.thrift,
+                cash: self.cash(acct),
+            })
         });
+        let steered = chosen_offer.is_some();
+        let closes = if chosen_offer == Some(0) { self.watch + 1 } else { self.watch + rules::SLIP_WATCHES };
         let id = self.next_id();
         self.slips.push(Slip {
             id,
@@ -1089,8 +1207,9 @@ impl World {
             sum_insured,
             offer_bps,
             opened: self.watch,
-            closes: self.watch + rules::SLIP_WATCHES,
+            closes,
             retried: false,
+            steered,
             hull: None,
             surveyed_by: Vec::new(),
             quotes: Vec::new(),

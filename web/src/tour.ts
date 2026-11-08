@@ -88,6 +88,9 @@ async function practiceRound() {
   await say("intro1");
   await say("intro2");
   byText("button", "Play!")?.click();
+  await waitFor(() => one(".role-card.shop"), 8000);
+  await say("roles");
+  one(".role-card.shop")?.click();
   await waitFor(() => one(".yes"), 15000);
   await sleep(700);
   await say("card");
@@ -147,11 +150,42 @@ async function spiral() {
   byText(".modal button", "Open your own shop")?.click();
 }
 
+/** The other side of the deal: Pip takes the wheel of a ship. */
+async function captainRound() {
+  const name = await waitFor(() => one<HTMLInputElement>("#house"), 8000);
+  if (name) setName(name, "Pip");
+  await sleep(300);
+  byText("button", "Play!")?.click();
+  const card = await waitFor(() => one<HTMLElement>(".role-card.captain"), 8000);
+  await say("capintro");
+  card?.click();
+  (await waitFor(() => one<HTMLElement>(".captain-card:not([disabled])"), 8000))?.click();
+  await waitFor(() => one(".bridge"), 10000);
+  one('[aria-label="Fast"]')?.click();
+  const trip = await waitFor(() => one<HTMLElement>(".trip-pick"), 60000);
+  one('[aria-label="Pause"]')?.click();
+  trip?.click();
+  await sleep(500);
+  one<HTMLElement>('[data-offer="fair"]')?.click();
+  await say("captrip");
+  one('[aria-label="Play"]')?.click();
+  one<HTMLElement>(".sail-button")?.click();
+  await waitFor(() => one(".answers li"), 40000);
+  await sleep(1200);
+  await talk("capanswers");
+  await waitFor(() => (one(".bridge-title")?.textContent?.startsWith("Sailing") ? one(".bridge-title") : null), 40000);
+  await sleep(800);
+  await talk("capoff");
+  one<HTMLElement>(".logo")?.click();
+}
+
 async function liveRound() {
   const name = await waitFor(() => one<HTMLInputElement>("#house"), 8000);
   if (name) setName(name, "Pip's Shop");
   await sleep(300);
   byText("button", "Play with others")?.click();
+  const shop = await waitFor(() => one<HTMLElement>(".role-card.shop"), 20000);
+  shop?.click();
   await say("live1");
   await waitFor(() => one(".pill.coins"), 45000);
   await sleep(500);
@@ -180,6 +214,7 @@ export async function runTour() {
   try {
     await practiceRound();
     await spiral();
+    await captainRound();
     await liveRound();
   } catch {
     // Stopping the tour leaves the game exactly where it was.

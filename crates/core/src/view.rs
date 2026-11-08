@@ -1,6 +1,7 @@
 //! What a player may see. Built from the state on request, so the same JSON
 //! reaches the page whether the world runs in the browser or on NEAR.
 
+use crate::engine::{lane_of_port, trip_goods};
 use crate::roster::CAPTAINS;
 use crate::rules::{self, GOOD_COUNT, HUB, LANES, LANE_COUNT, PORTS, PORT_COUNT};
 use crate::world::*;
@@ -31,6 +32,39 @@ pub struct WorldView {
     pub hall: Vec<HallEntry>,
     pub events: Vec<EventView>,
     pub fees: FeesView,
+    /// The ship this viewer is steering, if they are a captain.
+    pub helm: Option<HelmView>,
+}
+
+/// One trip the person at the wheel could make from here.
+#[derive(Serialize)]
+pub struct TripView {
+    pub lane: u8,
+    pub to: u8,
+    pub good: u8,
+    pub good_name: &'static str,
+    pub qty: u32,
+    pub cost: u64,
+    pub revenue: u64,
+    pub provisions: u64,
+    pub sum_insured: u64,
+    /// What the captain would offer for cover if left to themselves.
+    pub fair_offer_bps: u16,
+    /// Chance of being lost on this trip, storms included.
+    pub risk_bps: u64,
+    pub storm: bool,
+    pub watches: u32,
+}
+
+#[derive(Serialize)]
+pub struct HelmView {
+    pub captain: u16,
+    pub start_cash: u64,
+    pub trips: Vec<TripView>,
+    /// Sailing is still allowed this season.
+    pub can_sail: bool,
+    /// In port with the crew ready, so a trip can be planned now.
+    pub ready: bool,
 }
 
 #[derive(Serialize)]
@@ -86,6 +120,9 @@ pub struct CaptainView {
     pub losses: u16,
     pub frauds: u16,
     pub bond_owed: u64,
+    /// The name of the person at the wheel, if there is one.
+    pub player: Option<String>,
+    pub start_cash: u64,
 }
 
 #[derive(Serialize)]
@@ -141,6 +178,7 @@ pub struct SlipView {
     pub opened: u32,
     pub closes: u32,
     pub retried: bool,
+    pub steered: bool,
     /// Likely risk of this voyage, lowest and highest, in basis points.
     pub risk_low_bps: u64,
     pub risk_high_bps: u64,
@@ -265,9 +303,11 @@ fn rumour(shady: u8, frauds: u16, losses: u16) -> &'static str {
 impl World {
     /// Risk a voyage would run, with the storm forecast added in.
     fn forecast_risk(&self, s: &Slip, hull: u8) -> (u64, u64) {
-        let lane = usize::from(s.lane);
+        self.lane_forecast(usize::from(s.lane), s.closes, hull)
+    }
+
+    fn lane_forecast(&self, lane: usize, sails: u32, hull: u8) -> (u64, u64) {
         let base = rules::voyage_risk_bps(lane, self.lanes[lane].sea, hull).min(rules::BPS);
-        let sails = s.closes;
         let lands = sails + LANES[lane].watches;
         // Chance of surviving every storm watch, so the total can never pass 100%.
         let mut survive = rules::BPS - base;
@@ -305,6 +345,52 @@ impl World {
         (lowest * 112 / 100).clamp(100, 4_000) as u16
     }
 
+    /// The choices open to the person at the wheel of captain `c`.
+    fn helm_view(&self, c: usize) -> Option<HelmView> {
+        let captain = &self.captains[c];
+        let helm = captain.helm.as_ref()?;
+        let def = &CAPTAINS[c];
+        let can_sail = self.watch + rules::LAST_SAILING_BEFORE_END <= self.season_length();
+        let ready = matches!(captain.state, CaptainState::AtPort { ready_at, .. } if self.watch >= ready_at);
+        let mut trips = Vec::new();
+        if let (CaptainState::AtPort { port, .. }, true) = (&captain.state, can_sail && ready) {
+            let port = usize::from(*port);
+            let cash = self.cash(captain.acct);
+            let lanes: Vec<usize> = if port == HUB { (0..LANE_COUNT).collect() } else { vec![lane_of_port(port)] };
+            let (outbound, good) = trip_goods(port);
+            for lane in lanes {
+                let plan = self.trip_plan(c, port, lane, outbound, good, cash);
+                let sum_insured = plan.revenue + rules::hull_value(def.capacity);
+                let fair_offer_bps = rules::captain_offer_bps(&rules::OfferInputs {
+                    revenue: plan.revenue,
+                    cargo_cost: plan.cost,
+                    provisions: plan.provisions,
+                    sum_insured,
+                    thrift: def.thrift,
+                    cash,
+                });
+                let sails = self.watch + rules::SLIP_WATCHES;
+                let (base, storm) = self.lane_forecast(lane, sails, captain.hull);
+                trips.push(TripView {
+                    lane: lane as u8,
+                    to: if outbound { LANES[lane].port as u8 } else { HUB as u8 },
+                    good: plan.good as u8,
+                    good_name: rules::GOODS[plan.good].name,
+                    qty: plan.qty,
+                    cost: plan.cost,
+                    revenue: plan.revenue,
+                    provisions: plan.provisions,
+                    sum_insured,
+                    fair_offer_bps,
+                    risk_bps: base + storm,
+                    storm: storm > 0,
+                    watches: LANES[lane].watches,
+                });
+            }
+        }
+        Some(HelmView { captain: c as u16, start_cash: helm.start_cash, trips, can_sail, ready })
+    }
+
     fn slip_reasons(&self, s: &Slip) -> Vec<Reason> {
         let c = usize::from(s.captain);
         let def = &CAPTAINS[c];
@@ -337,6 +423,7 @@ impl World {
     /// Builds the page's picture of the world, as seen by `viewer`.
     pub fn view(&self, viewer: Option<&str>) -> WorldView {
         let you = viewer.and_then(|v| self.house_of(v));
+        let helm = viewer.and_then(|v| self.helm_of(v)).and_then(|c| self.helm_view(c));
 
         let lanes = (0..LANE_COUNT)
             .map(|i| {
@@ -394,6 +481,8 @@ impl World {
                 losses: c.losses,
                 frauds: c.frauds,
                 bond_owed: c.bond.as_ref().map(|b| b.owed).unwrap_or(0),
+                player: c.helm.as_ref().map(|h| h.name.clone()),
+                start_cash: c.helm.as_ref().map(|h| h.start_cash).unwrap_or(0),
             })
             .collect();
 
@@ -466,6 +555,7 @@ impl World {
                     opened: s.opened,
                     closes: s.closes,
                     retried: s.retried,
+                    steered: s.steered,
                     risk_low_bps: low,
                     risk_high_bps: high,
                     storm_bps: storm,
@@ -623,6 +713,7 @@ impl World {
                 reckoning_watches: rules::RECKONING_WATCHES,
                 max_gearing: rules::MAX_GEARING,
             },
+            helm,
         }
     }
 }

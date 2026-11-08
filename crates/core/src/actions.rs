@@ -23,6 +23,19 @@ pub enum Action {
     Inquiry { claim: u32 },
     /// Pay to refit a laid-up captain, and be repaid from future voyages.
     Refit { captain: u16 },
+    /// Take the wheel of a captain's ship, as a player. Nobody else may be steering it.
+    TakeHelm { name: String, captain: u16 },
+    /// Hand the ship back to its captain.
+    LeaveHelm,
+    /// Buy a cargo for `lane` and ask the shops for cover at up to `offer_bps`.
+    /// An offer of zero means sailing with no protection at all.
+    PlanTrip { lane: u8, offer_bps: u16 },
+    /// Give up on a trip that has not sailed, and sell the cargo back at a loss.
+    CancelTrip,
+    /// Stop waiting and sail at the next watch, with whatever cover there is.
+    SailNow,
+    /// Sink your own protected ship for the money. Shops may look into it.
+    Scuttle,
     /// Sandbox only: hand the desk to a clerk while fast-forwarding.
     SetClerk { on: bool },
     /// Sandbox only: send a great storm for demonstration.
@@ -64,6 +77,12 @@ impl World {
                 self.refit(c, h)?;
                 Ok(Receipt::Done)
             }
+            Action::TakeHelm { name, captain } => self.take_helm(who, &name, captain),
+            Action::LeaveHelm => self.leave_helm(who),
+            Action::PlanTrip { lane, offer_bps } => self.plan_trip(who, lane, offer_bps),
+            Action::CancelTrip => self.cancel_trip(who),
+            Action::SailNow => self.sail_now(who),
+            Action::Scuttle => self.scuttle(who),
             Action::SetClerk { on } => {
                 self.sandbox_only()?;
                 let h = self.house_of(who).ok_or("you have no house")?;
@@ -104,6 +123,9 @@ impl World {
 
     fn found_house(&mut self, who: &str, name: &str, agent: bool) -> Result<Receipt, String> {
         let name = clean_name(name)?;
+        if self.helm_of(who).is_some() {
+            return Err("you are steering a ship, so you cannot run a shop as well".into());
+        }
         let kind = if agent { HouseKind::Agent } else { HouseKind::Player };
         if let Some(h) = self.house_of(who) {
             if self.houses[h].active() {
@@ -142,6 +164,101 @@ impl World {
         });
         self.log(Event::Founded { house: self.houses.len() as u16 - 1 });
         Ok(Receipt::Founded { capital: rules::PLAYER_START_CAPITAL })
+    }
+
+    fn take_helm(&mut self, who: &str, name: &str, captain: u16) -> Result<Receipt, String> {
+        let name = clean_name(name)?;
+        let c = usize::from(captain);
+        if c >= self.captains.len() {
+            return Err("no such captain".into());
+        }
+        if self.helm_of(who).is_some() {
+            return Err("you are already steering a ship".into());
+        }
+        if self.house_of(who).is_some_and(|h| self.houses[h].active()) {
+            return Err("you run a shop, so you cannot steer a ship as well".into());
+        }
+        if self.captains[c].helm.is_some() {
+            return Err("someone else is at that wheel".into());
+        }
+        let acct = self.ledger.account(who).map_err(|e| e.to_string())?;
+        // Cargo already bought counts as the captain's money, so nobody is scored
+        // on a sale they didn't make.
+        let aboard = match self.captains[c].state {
+            CaptainState::Seeking { slip } => self.slips.iter().find(|s| s.id == slip).map_or(0, |s| s.cargo_cost),
+            CaptainState::Sailing { voyage } => self.voyages.iter().find(|v| v.id == voyage).map_or(0, |v| v.cargo_cost),
+            _ => 0,
+        };
+        let start_cash = self.cash(self.captains[c].acct) + aboard;
+        self.captains[c].helm = Some(Helm { acct, name, start_cash, idle: 0 });
+        self.log(Event::HelmTaken { captain });
+        Ok(Receipt::Done)
+    }
+
+    fn leave_helm(&mut self, who: &str) -> Result<Receipt, String> {
+        let c = self.helm_of(who).ok_or("you are not steering a ship")?;
+        self.captains[c].helm = None;
+        self.log(Event::HelmLeft { captain: c as u16 });
+        Ok(Receipt::Done)
+    }
+
+    fn plan_trip(&mut self, who: &str, lane: u8, offer_bps: u16) -> Result<Receipt, String> {
+        let c = self.helm_of(who).ok_or("you are not steering a ship")?;
+        if !(offer_bps == 0 || (50..=rules::MAX_OFFER_BPS).contains(&offer_bps)) {
+            return Err("that offer is out of bounds".into());
+        }
+        if usize::from(lane) >= rules::LANE_COUNT {
+            return Err("no such route".into());
+        }
+        self.plan_steered_trip(c, usize::from(lane), offer_bps)?;
+        if let Some(helm) = &mut self.captains[c].helm {
+            helm.idle = 0;
+        }
+        Ok(Receipt::Done)
+    }
+
+    fn cancel_trip(&mut self, who: &str) -> Result<Receipt, String> {
+        let c = self.helm_of(who).ok_or("you are not steering a ship")?;
+        let CaptainState::Seeking { slip } = self.captains[c].state else {
+            return Err("your ship has no trip to cancel".into());
+        };
+        let ix = self.slips.iter().position(|s| s.id == slip).ok_or("that trip has closed")?;
+        let slip = self.slips.remove(ix);
+        self.withdraw(slip);
+        Ok(Receipt::Done)
+    }
+
+    fn sail_now(&mut self, who: &str) -> Result<Receipt, String> {
+        let c = self.helm_of(who).ok_or("you are not steering a ship")?;
+        let CaptainState::Seeking { slip } = self.captains[c].state else {
+            return Err("your ship has no trip waiting".into());
+        };
+        let watch = self.watch;
+        let slip = self.slips.iter_mut().find(|s| s.id == slip).ok_or("that trip has closed")?;
+        // Next watch at the soonest, so the rule-driven shops always get their say.
+        slip.closes = slip.closes.min(watch + 1).max(slip.opened + 2);
+        Ok(Receipt::Done)
+    }
+
+    fn scuttle(&mut self, who: &str) -> Result<Receipt, String> {
+        let c = self.helm_of(who).ok_or("you are not steering a ship")?;
+        let CaptainState::Sailing { voyage } = self.captains[c].state else {
+            return Err("your ship is not at sea".into());
+        };
+        let watch = self.watch;
+        let v = self.voyages.iter_mut().find(|v| v.id == voyage).ok_or("your ship is not at sea")?;
+        if !v.steered {
+            return Err("your captain planned this trip, not you".into());
+        }
+        if v.covered_bps == 0 {
+            return Err("nobody would pay for this ship".into());
+        }
+        if watch <= v.sailed {
+            return Err("wait until you are out of sight of the harbor".into());
+        }
+        // It goes down at the next watch, in the world's own step.
+        v.scuttled = true;
+        Ok(Receipt::Done)
     }
 
     fn quote(&mut self, who: &str, slip: u32, rate_bps: u16, line_bps: u16) -> Result<Receipt, String> {
@@ -280,9 +397,15 @@ impl World {
             self.claims[ix].inquiry_by = None;
             let h = usize::from(house);
 
-            // The truth is not stored anywhere. It is decided here, by fresh
-            // randomness, at exactly the odds the harbor could see.
-            if r.below(100) >= u64::from(c.suspicion) {
+            // For a rule-driven captain the truth is not stored anywhere. It is decided
+            // here, by fresh randomness, at exactly the odds the harbor could see.
+            // A person made a real choice, so an honest player can never be framed.
+            let proven = if c.steered {
+                c.deliberate && r.below(100) < rules::INQUIRY_CATCH_PCT
+            } else {
+                r.below(100) < u64::from(c.suspicion)
+            };
+            if !proven {
                 let name = &mut self.houses[h];
                 name.reputation = name.reputation.saturating_sub(4);
                 self.log(Event::HonestLoss { claim: c.id, captain: c.captain, house });

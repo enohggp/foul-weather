@@ -33,6 +33,17 @@ Quests give you one clear goal at a time. Stars from quests and safe ships buy d
 
 A season is four weeks, about 18 minutes at normal speed. You start with 4,000 coins. You try to reach the Harbor Festival with your shop open and on top of **Who's winning?**. Two great storms arrive in every season. Each one can close shops, and a closed shop takes its promises with it.
 
+## The other side: being a captain
+
+A player can take the wheel of any free captain's ship instead of running a shop.
+
+1. **Pick an island.** Each trip shows what you could earn, and whether a storm is on the route.
+2. **Choose how much to pay for protection:** cheap, fair, generous, or none. A low offer saves coins, but fewer shops say yes.
+3. **Watch the shops answer.** Real players' shops are marked. Sail when you have enough cover, or cancel.
+4. **Sail.** Sell your cargo on arrival. If you sink, the shops that protected you pay.
+
+After a few trips a captain can try a sneaky trick: sink their own protected ship for the money. It is easy to hide in a storm and obvious in calm water, and shops can pay to look into it. A captain who gets caught pays a fine and is laid up.
+
 ## Why the economy is the game
 
 Nothing is priced from a table. Captains offer a share of what a voyage should earn. Shops price what they think the risk is. Those two views meet on every deal:

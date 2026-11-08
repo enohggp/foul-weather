@@ -102,9 +102,10 @@ function VisitorCard({ slip, view, you, xp, watchMs, busy, spotlight, lockNo, on
   const room = you ? you.capital * view.fees.max_gearing - you.net_book : 0;
   const tooMuch = deal.lose > room;
   const lane = view.lanes[slip.lane];
+  const player = view.captains[slip.captain]?.player;
 
   return (
-    <article className={`visitor v-${deal.verdict}`}>
+    <article className={`visitor v-${deal.verdict}${player ? " real" : ""}`}>
       <span className="visitor-timer" aria-hidden="true">
         <i style={{ width: `${(left / total) * 100}%` }} />
       </span>
@@ -112,6 +113,7 @@ function VisitorCard({ slip, view, you, xp, watchMs, busy, spotlight, lockNo, on
         <Character id={slip.captain} mood={mood} size={88} />
         <div className="visitor-say">
           <b>{fullName(slip.captain)}</b>
+          {player && <em className="real-badge">Real player: {player}</em>}
           <p className="bubble small-bubble">{danger ? cast.worried : cast.hello}</p>
         </div>
       </div>
@@ -210,7 +212,8 @@ export default function Dock({ view, passed, only, children, ...rest }: Props) {
             (only === null || s.id === only) &&
             !(you && s.quotes.some((q) => q.house === you.id)),
         )
-        .sort((a, b) => a.id - b.id),
+        // Real people first: they're waiting for an answer.
+        .sort((a, b) => Number(!!view.captains[a.captain]?.player) * -1 + Number(!!view.captains[b.captain]?.player) || a.id - b.id),
     [view, passed, only, you],
   );
   const current = waiting.find((s) => s.id === chosen) ?? waiting[0];

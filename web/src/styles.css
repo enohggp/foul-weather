@@ -283,6 +283,93 @@ p {
   font-size: 0.92rem;
 }
 
+/* ---- Choosing who to be ---- */
+
+.title-card.wide {
+  width: min(640px, 100%);
+}
+
+.roles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin: 14px 0 6px;
+}
+
+.role-card {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  padding: 14px 12px;
+  text-align: center;
+  background: #fff;
+  border: 3px solid var(--ink);
+  border-radius: 20px;
+  box-shadow: 0 5px 0 var(--ink);
+  transition: transform 0.08s, box-shadow 0.08s;
+}
+
+.role-card:hover:not(:disabled) {
+  transform: translateY(-2px);
+  background: #e8f9ff;
+}
+
+.role-card b {
+  font-size: 1.3rem;
+  font-weight: 700;
+}
+
+.role-card span {
+  font-size: 0.95rem;
+  color: var(--ink-2);
+}
+
+.pick-title {
+  margin-bottom: 10px;
+  font-size: 1.6rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.captain-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  max-height: 62vh;
+  overflow-y: auto;
+}
+
+.captain-card {
+  display: grid;
+  justify-items: center;
+  gap: 1px;
+  padding: 6px 3px;
+  background: #fff;
+  border: 2.5px solid var(--line);
+  border-radius: 14px;
+  text-align: center;
+}
+
+.captain-card:hover:not(:disabled) {
+  border-color: var(--blue);
+}
+
+.captain-card b {
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 1.1;
+}
+
+.captain-card small {
+  font-size: 0.72rem;
+  color: var(--ink-2);
+}
+
+.back-link {
+  display: block;
+  margin: 8px auto 0;
+}
+
 /* ---- Game layout ---- */
 
 .game {
@@ -883,6 +970,246 @@ p {
     box-shadow: 0 0 0 7px var(--gold), 0 0 30px 12px rgba(255, 197, 49, 0.95);
     transform: scale(1.03);
   }
+}
+
+/* ---- The captain's bridge ---- */
+
+.bridge {
+  overflow: visible;
+  animation: none;
+}
+
+.bridge-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+.ship-note {
+  font-size: 0.9rem;
+  color: var(--ink-2);
+}
+
+.trip-list {
+  display: grid;
+  gap: 4px;
+}
+
+.trip-pick {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  text-align: left;
+  background: #fff;
+  border: 2.5px solid var(--line);
+  border-radius: 12px;
+}
+
+.trip-pick:hover {
+  border-color: var(--blue);
+}
+
+.trip-pick.on {
+  border-color: var(--ink);
+  background: #e8f9ff;
+}
+
+.trip-pick-text {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+}
+
+.trip-pick-text b {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.trip-pick-text small {
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+
+.trip-pick strong {
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.tone-great {
+  color: var(--green-dark);
+}
+
+.tone-ok {
+  color: #b5760c;
+}
+
+.tone-bad {
+  color: var(--red-dark);
+}
+
+.protect {
+  display: grid;
+  gap: 6px;
+}
+
+.protect-title {
+  font-size: 0.95rem;
+}
+
+.protect-title b {
+  font-weight: 600;
+}
+
+.protect-choices {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+}
+
+.chip {
+  display: grid;
+  justify-items: center;
+  padding: 3px 2px 4px;
+  background: #fff;
+  border: 2.5px solid var(--line);
+  border-radius: 11px;
+}
+
+.chip b {
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.chip span {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.chip.on {
+  border-color: var(--ink);
+  background: var(--gold);
+}
+
+.chip.none.on {
+  background: #ffe3de;
+}
+
+.protect-hint {
+  font-size: 0.88rem;
+  color: var(--ink-2);
+}
+
+.sail-button {
+  padding: 7px 12px;
+  font-size: 1.2rem;
+}
+
+.cover-bar {
+  display: block;
+  height: 16px;
+  background: var(--cream-2);
+  border: 2.5px solid var(--ink);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.cover-bar i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(#4fd072, var(--green));
+  transition: width 0.4s;
+}
+
+.answers {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 3px;
+  max-height: 170px;
+  overflow-y: auto;
+}
+
+.answers li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 6px;
+  background: #fff;
+  border: 2px solid var(--line);
+  border-radius: 10px;
+  font-size: 0.85rem;
+}
+
+.answers li.real {
+  border-color: var(--blue);
+  background: #e8f9ff;
+}
+
+.answers span {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+}
+
+.answers b {
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.answers em,
+.real-badge {
+  font-size: 0.76rem;
+  font-style: normal;
+  font-weight: 600;
+  color: var(--blue-dark);
+}
+
+.real-badge {
+  justify-self: start;
+  padding: 1px 8px;
+  background: #d9f6ff;
+  border: 2px solid var(--blue);
+  border-radius: 9px;
+}
+
+.visitor.real {
+  border-color: var(--blue-dark);
+}
+
+.real-dot {
+  width: 9px;
+  height: 9px;
+  margin-left: auto;
+  border-radius: 50%;
+  background: var(--blue);
+}
+
+.trip.big {
+  height: 14px;
+}
+
+.sneaky {
+  padding-top: 4px;
+  border-top: 2px dashed var(--line);
+  text-align: center;
+  font-size: 0.9rem;
+}
+
+.danger {
+  padding: 9px 8px;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--red);
+  border: 3px solid var(--ink);
+  border-radius: 16px;
+  box-shadow: 0 4px 0 var(--ink);
 }
 
 /* ---- Right side ---- */
@@ -2212,6 +2539,14 @@ body.touring .helper {
 }
 
 @media (max-width: 900px) {
+  .roles {
+    grid-template-columns: 1fr;
+  }
+
+  .captain-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
   html,
   body,
   #root {
