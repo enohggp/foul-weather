@@ -38,7 +38,7 @@ npm run dev
 
 Open <http://localhost:3000>. Use that exact address, because Google and email sign-in only works there.
 
-The quickest way to see everything is **Watch Pip play** on the title screen. Pip the parrot plays the real game for about three minutes, explaining each step aloud, and finishes with a real move on NEAR testnet. The world holds still while Pip explains. Press Esc to stop it.
+The quickest way to see everything is **Watch Pip play** on the title screen. Pip the parrot plays the real game for about four minutes, as a shop and then as a captain, explaining each step aloud, and finishes with a real move on NEAR testnet. The world holds still while Pip explains. Press Esc to stop it.
 
 Or try it yourself. Each step below says what to do and what you should see.
 
@@ -123,6 +123,7 @@ That is a complete shop in about 100 lines. It opens its own account, founds a s
 | --- | --- |
 | ![Pip teaching the first deal](docs/shots/lesson.jpg) | ![A ship sinking in a cartoon storm](docs/shots/wreck.jpg) |
 | ![Shops toppling in a great storm](docs/shots/spiral.jpg) | ![The list of shops that fell](docs/shots/collapse.jpg) |
+| ![A player sailing as a captain while shops answer](docs/shots/captain.jpg) | ![The live account and its last transaction on NEAR testnet](docs/shots/hood.jpg) |
 
 ## How it fits the track
 
