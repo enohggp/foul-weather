@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { cargo, fullName, place, shopName } from "../cast";
-import type { Driver, House, View, Voyage } from "../types";
+import type { Driver, FleetShip, House, View, Voyage } from "../types";
 import { crowns } from "../words";
 import { AWNINGS, Character, YOUR_AWNING } from "./art";
 import { drawShip, SAILS } from "./scene";
@@ -43,6 +43,54 @@ const SHOPS: [number, number][] = [
   [30, 540],
 ];
 const YOUR_SHOP: [number, number] = [116, 452];
+
+/** The town game shows this much extra land to the left of the usual map. */
+const TOWN_LEFT = 200;
+
+/** Where each building stands, by kind and then by how many of that kind you own. */
+export const TOWN_PLOTS: [number, number][][] = [
+  [[10, 390], [-70, 390], [-150, 530], [-150, 310], [-150, 610]], // Cottages
+  [[90, 390], [-150, 390], [-70, 610]], // Fish Stalls
+  [[-70, 530], [-70, 230]], // Bakeries
+  [[10, 310], [-70, 690]], // Inns
+  [[10, 230]], // Market Hall
+  [[90, 530], [90, 310], [90, 230]], // Docks
+  [[10, 530], [-150, 690]], // Taverns
+  [[-70, 310], [-150, 230]], // Warehouses
+  [[90, 610]], // Lighthouse
+  [[10, 610]], // Shipyard
+  [[10, 690]], // Insurance Office
+  [[90, 690]], // Pirate Cove
+];
+
+/** The sandy streets and building pads of the player's town. */
+function townGround(ctx: CanvasRenderingContext2D) {
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  const road = (points: [number, number][], width: number) => {
+    ctx.beginPath();
+    points.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+    ctx.strokeStyle = "#d9b273";
+    ctx.lineWidth = width + 6;
+    ctx.stroke();
+    ctx.strokeStyle = "#f5dca6";
+    ctx.lineWidth = width;
+    ctx.stroke();
+  };
+  road([[-190, 452], [150, 452]], 30);
+  road([[50, 452], [50, 180]], 20);
+  road([[50, 452], [50, 720]], 20);
+  road([[-110, 452], [-110, 180]], 20);
+  road([[-110, 452], [-110, 720]], 20);
+  for (const kind of TOWN_PLOTS) {
+    for (const [x, y] of kind) {
+      ctx.beginPath();
+      ctx.ellipse(x, y + 2, 35, 13, 0, 0, TAU);
+      ctx.fillStyle = "rgba(92,187,69,0.75)";
+      ctx.fill();
+    }
+  }
+}
 
 interface Point {
   x: number;
@@ -251,7 +299,7 @@ function plaque(ctx: CanvasRenderingContext2D, text: string, x: number, y: numbe
   ctx.textBaseline = "alphabetic";
 }
 
-function paintWorld(ctx: CanvasRenderingContext2D) {
+function paintWorld(ctx: CanvasRenderingContext2D, townMode: boolean) {
   const sea = ctx.createLinearGradient(0, -300, 0, H + 300);
   sea.addColorStop(0, "#5fd8e8");
   sea.addColorStop(1, "#2bb0d6");
@@ -279,7 +327,7 @@ function paintWorld(ctx: CanvasRenderingContext2D) {
   for (let i = 0; i < 46; i++) {
     const x = -220 + trees() * 330;
     const y = -220 + trees() * 1330;
-    if (Math.abs(y - 452) < 320 && x > -30) continue;
+    if (Math.abs(y - 452) < 320 && x > (townMode ? -200 : -30)) continue;
     tree(ctx, x, y, 1 + trees() * 0.4, i % 3 ? "#4fb84a" : "#3fa84a");
   }
   (
@@ -290,7 +338,11 @@ function paintWorld(ctx: CanvasRenderingContext2D) {
       [-10, 300, "#ffe6c7", "#b45bb0"],
       [-8, 620, "#fff4dd", "#e8504a"],
     ] as [number, number, string, string][]
-  ).forEach(([x, y, a, b]) => house(ctx, x, y, 1.05, a, b));
+  ).forEach(([x, y, a, b]) => {
+    if (!townMode) house(ctx, x, y, 1.05, a, b);
+  });
+
+  if (townMode) townGround(ctx);
 
   // The pier.
   ctx.beginPath();
@@ -405,7 +457,7 @@ function paintWorld(ctx: CanvasRenderingContext2D) {
   }
 
   // Names, each saying what the island makes.
-  plaque(ctx, "Merrow Town", 108, 512);
+  if (!townMode) plaque(ctx, "Merrow Town", 108, 512);
   plaque(ctx, "Wheat Island", 470, 176);
   plaque(ctx, "Timber Island", 664, 396);
   plaque(ctx, "Iron Volcano", 430, 842);
@@ -628,6 +680,7 @@ interface Hover {
   voyage?: Voyage;
   port?: number;
   house?: House;
+  fleet?: FleetShip;
 }
 
 interface Props {
@@ -641,19 +694,38 @@ interface Props {
   onFit: (fit: Fit) => void;
   /** Set when the player is a captain: the ship with the gold ring. */
   myCaptain?: number;
+  /** The town game: draws towns' ships and the waves, and leaves the land free to build on. */
+  townMode?: boolean;
+  /** A rival ship on the map was tapped. */
+  onRival?: (ship: FleetShip) => void;
+  /** What each town has just said, shown over its ship. */
+  speech?: Map<number, { text: string; until: number }>;
 }
 
-export default function Chart({ view, driver, flash, built, level, inset, onFit, myCaptain }: Props) {
+/** How big each class of ship looks on the map. */
+const CLASS_SCALE = [0.72, 0.92, 1.1, 1.32];
+
+function waterColour(swell: number) {
+  if (swell >= 75) return "rgba(235,70,60,0.95)";
+  if (swell >= 55) return "rgba(255,160,50,0.95)";
+  return "rgba(255,255,255,0.85)";
+}
+
+export default function Chart({ view, driver, flash, built, level, inset, onFit, myCaptain, townMode = false, onRival, speech }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
-  const latest = useRef({ view, built, level, inset, myCaptain });
+  const latest = useRef({ view, built, level, inset, myCaptain, townMode, onRival, speech });
   const flashAt = useRef(0);
+  const refit = useRef<() => void>(() => undefined);
   const [hover, setHover] = useState<Hover | null>(null);
-  latest.current = { view, built, level, inset, myCaptain };
+  latest.current = { view, built, level, inset, myCaptain, townMode, onRival, speech };
 
   useEffect(() => {
     if (flash) flashAt.current = performance.now();
   }, [flash]);
+
+  // The space kept clear can change after the map first sizes itself.
+  useEffect(() => refit.current(), [inset]);
 
   useEffect(() => {
     const el = canvas.current!;
@@ -670,6 +742,9 @@ export default function Chart({ view, driver, flash, built, level, inset, onFit,
     const ripples: { x: number; y: number; born: number }[] = [];
     const lastPlace = new Map<number, Point>();
     const drawn: { x: number; y: number; voyage: Voyage }[] = [];
+    const drawnFleet: { x: number; y: number; ship: FleetShip }[] = [];
+    const lastShip = new Map<number, FleetShip>();
+    const homers: { x: number; y: number; born: number; ship: FleetShip }[] = [];
 
     const resize = () => {
       if (!host.current) return;
@@ -682,18 +757,20 @@ export default function Chart({ view, driver, flash, built, level, inset, onFit,
       el.style.height = `${box.height}px`;
       const roomW = box.width - left;
       const roomH = box.height - top - bottom;
-      scale = Math.min(roomW / W, roomH / H);
-      offsetX = left + (roomW - W * scale) / 2;
+      const extra = latest.current.townMode ? TOWN_LEFT : 0;
+      scale = Math.min(roomW / (W + extra), roomH / H);
+      offsetX = left + (roomW - (W + extra) * scale) / 2 + extra * scale;
       offsetY = top + (roomH - H * scale) / 2;
       boats = Math.max(0.22, 0.19 / Math.pow(scale, 0.6));
       world.width = el.width;
       world.height = el.height;
       const g = world.getContext("2d")!;
       g.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * offsetX, dpr * offsetY);
-      paintWorld(g);
+      paintWorld(g, latest.current.townMode);
       onFit({ scale, x: offsetX, y: offsetY });
     };
 
+    refit.current = resize;
     const observer = new ResizeObserver(resize);
     observer.observe(host.current!);
     resize();
@@ -701,7 +778,7 @@ export default function Chart({ view, driver, flash, built, level, inset, onFit,
 
     const render = (now: number) => {
       frame = requestAnimationFrame(render);
-      const { view: v, built: decor, level: rank, myCaptain: captain } = latest.current;
+      const { view: v, built: decor, level: rank, myCaptain: captain, townMode: towny } = latest.current;
       const t = now / 1000;
       const length = driver.watchLength() || v.watch_ms;
       const running = driver.watchLength() > 0;
@@ -726,36 +803,57 @@ export default function Chart({ view, driver, flash, built, level, inset, onFit,
         ctx.setLineDash([3, 11]);
         ctx.lineCap = "round";
         ctx.lineWidth = 3.4;
-        ctx.strokeStyle = v.storms.some((s) => s.lanes.includes(lane.id)) ? "rgba(235,70,60,0.95)" : "rgba(255,255,255,0.85)";
+        const stormy = v.storms.some((s) => s.lanes.includes(lane.id));
+        ctx.strokeStyle = stormy ? "rgba(235,70,60,0.95)" : towny ? waterColour(lane.swell) : "rgba(255,255,255,0.85)";
         ctx.stroke();
         ctx.setLineDash([]);
         // Bigger waves when the sea is rough.
-        const marks = Math.floor(lane.sea / 16);
-        ctx.strokeStyle = "rgba(255,255,255,0.75)";
-        ctx.lineWidth = 2.2;
+        const marks = towny ? Math.floor(lane.swell / 9) : Math.floor(lane.sea / 16);
+        const tall = towny ? 6 + Math.max(0, lane.swell - 30) / 6 : 6;
+        const speed = towny && lane.swell >= 55 ? 4 : 1.7;
+        ctx.strokeStyle = towny && lane.swell >= 75 ? "rgba(255,225,220,0.95)" : "rgba(255,255,255,0.75)";
+        ctx.lineWidth = towny && lane.swell >= 55 ? 3 : 2.2;
         for (let i = 0; i < marks; i++) {
           const u = 0.14 + (0.72 * (i + 0.5)) / marks;
           const p = curve(lane.id, u, i % 2 ? 15 : -15);
-          const lift = Math.sin(t * 1.7 + i * 1.6) * 2.2;
+          const lift = Math.sin(t * speed + i * 1.6) * (tall / 2.8);
+          const wide = tall * 1.5;
           ctx.beginPath();
-          ctx.moveTo(p.x - 9, p.y + lift);
-          ctx.quadraticCurveTo(p.x - 4.5, p.y - 6 + lift, p.x, p.y + lift);
-          ctx.quadraticCurveTo(p.x + 4.5, p.y - 6 + lift, p.x + 9, p.y + lift);
+          ctx.moveTo(p.x - wide, p.y + lift);
+          ctx.quadraticCurveTo(p.x - wide / 2, p.y - tall + lift, p.x, p.y + lift);
+          ctx.quadraticCurveTo(p.x + wide / 2, p.y - tall + lift, p.x + wide, p.y + lift);
           ctx.stroke();
+        }
+        if (towny && lane.swell >= 55) {
+          // A word on the water, so nobody has to decode the colours.
+          const wild = lane.swell >= 75;
+          const spot = curve(lane.id, 0.56, 34);
+          const label = wild ? "WILD!" : "Rough";
+          const grow = wild ? 1 + Math.sin(t * 6) * 0.08 : 1;
+          ctx.font = `700 ${Math.round(19 * grow)}px "Fredoka", sans-serif`;
+          ctx.textAlign = "center";
+          ctx.lineJoin = "round";
+          ctx.lineWidth = 6;
+          ctx.strokeStyle = "#fff";
+          ctx.strokeText(label, spot.x, spot.y);
+          ctx.fillStyle = wild ? "#d13a2e" : "#d9791a";
+          ctx.fillText(label, spot.x, spot.y);
         }
       });
 
       // Merrow's shops. A failed rival's shop closes for everyone to see.
-      const rivals = v.houses.filter((h) => !h.you).slice(0, SHOPS.length);
-      rivals.forEach((h, i) => {
-        const [x, y] = SHOPS[i];
-        shop(ctx, x, y, 0.9, AWNINGS[i % AWNINGS.length], !h.active, false);
-      });
-      // Your shop grows with you.
-      if (captain === undefined) {
-        shop(ctx, YOUR_SHOP[0], YOUR_SHOP[1], 1.14 + Math.min(rank, 8) * 0.06, YOUR_AWNING, you ? !you.active : false, true);
+      if (!towny) {
+        const rivals = v.houses.filter((h) => !h.you).slice(0, SHOPS.length);
+        rivals.forEach((h, i) => {
+          const [x, y] = SHOPS[i];
+          shop(ctx, x, y, 0.9, AWNINGS[i % AWNINGS.length], !h.active, false);
+        });
+        // Your shop grows with you.
+        if (captain === undefined) {
+          shop(ctx, YOUR_SHOP[0], YOUR_SHOP[1], 1.14 + Math.min(rank, 8) * 0.06, YOUR_AWNING, you ? !you.active : false, true);
+        }
+        decorations(ctx, decor, t);
       }
-      decorations(ctx, decor, t);
 
       // Volcano smoke.
       for (let i = 0; i < 4; i++) {
@@ -768,7 +866,94 @@ export default function Chart({ view, driver, flash, built, level, inset, onFit,
 
       // Ships.
       drawn.length = 0;
-      v.voyages.forEach((voyage) => {
+      drawnFleet.length = 0;
+      if (towny) {
+        v.fleet.forEach((ship) => {
+          const span = Math.max(1, ship.arrives - ship.sailed);
+          const progress = Math.min(1, Math.max(0, (clock - ship.sailed) / span));
+          const p = curve(ship.lane, progress, ship.mine ? 8 : ship.ship % 2 ? -12 : 14);
+          const facing = p.dx >= 0 ? 1 : -1;
+          const bob = Math.sin(t * 2.2 + ship.ship) * 1.8;
+          lastPlace.set(ship.ship, { x: p.x, y: p.y });
+          lastShip.set(ship.ship, ship);
+          ctx.strokeStyle = "rgba(255,255,255,0.75)";
+          ctx.lineWidth = 2.4;
+          for (let i = 1; i <= 3; i++) {
+            ctx.beginPath();
+            ctx.arc(p.x - facing * (14 + i * 9), p.y + 6, 2.5 + i, 0, Math.PI);
+            ctx.stroke();
+          }
+          if (ship.mine) {
+            ctx.beginPath();
+            ctx.arc(p.x, p.y - 12, 34 + Math.sin(t * 4) * 2, 0, TAU);
+            ctx.fillStyle = "rgba(255,210,63,0.34)";
+            ctx.fill();
+            ctx.lineWidth = 3.5;
+            ctx.strokeStyle = "#ffc531";
+            ctx.stroke();
+          }
+          const [sail, stripe] = SAILS[ship.town % SAILS.length];
+          drawShip(ctx, {
+            x: p.x,
+            y: p.y + 6 + bob,
+            angle: Math.sin(t * 1.7 + ship.ship) * 0.05,
+            scale: boats * CLASS_SCALE[ship.class] * (ship.mine ? 1.3 : 1.05),
+            facing,
+            sail,
+            stripe,
+            t: t + ship.ship,
+          });
+          drawnFleet.push({ x: p.x, y: p.y - 10, ship });
+          const label = ship.mine ? "You" : ship.bot ? `${ship.town_name} (bot)` : ship.town_name;
+          ctx.font = `600 ${ship.mine ? 16 : 13}px "Fredoka", sans-serif`;
+          ctx.textAlign = "center";
+          ctx.lineJoin = "round";
+          ctx.lineWidth = 5;
+          ctx.strokeStyle = "#fff";
+          ctx.strokeText(label, p.x, p.y - 44);
+          ctx.fillStyle = ship.mine ? "#c47d00" : ship.bot ? "#1b75ab" : "#7a3fb0";
+          ctx.fillText(label, p.x, p.y - 44);
+          const said = latest.current.speech?.get(ship.town);
+          if (said && said.until > now) {
+            ctx.font = `600 15px "Fredoka", sans-serif`;
+            const wide = ctx.measureText(said.text).width + 22;
+            const [left, top] = [p.x - wide / 2, p.y - 92];
+            ctx.beginPath();
+            ctx.roundRect(left, top, wide, 30, 12);
+            ctx.fillStyle = "#fff";
+            ctx.fill();
+            ctx.lineWidth = 2.5;
+            ctx.strokeStyle = INK;
+            ctx.stroke();
+            ctx.fillStyle = INK;
+            ctx.textAlign = "center";
+            ctx.fillText(said.text, p.x, top + 20);
+          }
+        });
+        // Ships called home race back to the pier.
+        for (let i = homers.length - 1; i >= 0; i--) {
+          const home = homers[i];
+          const age = (now - home.born) / 900;
+          if (age >= 1) {
+            ripples.push({ x: PORTS[0][0], y: PORTS[0][1], born: now });
+            homers.splice(i, 1);
+            continue;
+          }
+          const eased = age * age * (3 - 2 * age);
+          const [sail, stripe] = SAILS[home.ship.town % SAILS.length];
+          drawShip(ctx, {
+            x: home.x + (PORTS[0][0] - home.x) * eased,
+            y: home.y + (PORTS[0][1] - home.y) * eased,
+            angle: 0,
+            scale: boats * CLASS_SCALE[home.ship.class],
+            facing: PORTS[0][0] >= home.x ? 1 : -1,
+            sail,
+            stripe,
+            t,
+          });
+        }
+      }
+      if (!towny) v.voyages.forEach((voyage) => {
         const span = Math.max(1, voyage.arrives - voyage.sailed);
         const progress = Math.min(1, Math.max(0, (clock - voyage.sailed) / span));
         const u = voyage.outbound ? progress : 1 - progress;
@@ -855,6 +1040,19 @@ export default function Chart({ view, driver, flash, built, level, inset, onFit,
           } else if (e.type === "home") {
             const [x, y] = PORTS[e.port];
             ripples.push({ x, y, born: now });
+          } else if (e.type === "trip_lost") {
+            const spot = lastPlace.get(e.ship);
+            if (spot) wrecks.push({ ...spot, born: now, mine: false, captain: e.town });
+          } else if (e.type === "trip_back") {
+            const spot = lastPlace.get(e.ship);
+            const ship = lastShip.get(e.ship);
+            if (spot && ship) homers.push({ ...spot, born: now, ship });
+          } else if (e.type === "trip_home") {
+            const ship = lastShip.get(e.ship);
+            if (ship) {
+              const [x, y] = PORTS[ship.lane + 1];
+              ripples.push({ x, y, born: now });
+            }
           }
         }
         lastSeq = v.seq;
@@ -931,26 +1129,37 @@ export default function Chart({ view, driver, flash, built, level, inset, onFit,
       const sy = event.clientY - box.top;
       const x = (sx - offsetX) / scale;
       const y = (sy - offsetY) / scale;
+      const rival = drawnFleet.find((s) => Math.hypot(s.x - x, s.y - y) < 30);
+      if (rival) return setHover({ x: sx, y: sy, fleet: rival.ship });
       const ship = drawn.find((s) => Math.hypot(s.x - x, s.y - y) < 28);
       if (ship) return setHover({ x: sx, y: sy, voyage: ship.voyage });
       const port = PORTS.findIndex(([px, py]) => Math.hypot(px - x, py - y) < 58);
       if (port >= 0) return setHover({ x: sx, y: sy, port });
       const v = latest.current.view;
+      if (latest.current.townMode) return setHover(null);
       const rivals = v.houses.filter((h) => !h.you).slice(0, SHOPS.length);
       const near = SHOPS.findIndex(([px, py], i) => rivals[i] && Math.hypot(px - x, py - 18 - y) < 28);
       if (near >= 0) return setHover({ x: sx, y: sy, house: rivals[near] });
       return setHover(null);
     };
     const leave = () => setHover(null);
+    const tap = (event: MouseEvent) => {
+      point(event);
+      const box = el.getBoundingClientRect();
+      const x = (event.clientX - box.left - offsetX) / scale;
+      const y = (event.clientY - box.top - offsetY) / scale;
+      const hit = drawnFleet.find((s) => !s.ship.mine && Math.hypot(s.x - x, s.y - y) < 30);
+      if (hit) latest.current.onRival?.(hit.ship);
+    };
     el.addEventListener("mousemove", point);
-    el.addEventListener("click", point);
+    el.addEventListener("click", tap);
     el.addEventListener("mouseleave", leave);
 
     return () => {
       cancelAnimationFrame(frame);
       observer.disconnect();
       el.removeEventListener("mousemove", point);
-      el.removeEventListener("click", point);
+      el.removeEventListener("click", tap);
       el.removeEventListener("mouseleave", leave);
     };
   }, [driver, onFit]);
@@ -978,7 +1187,15 @@ export default function Chart({ view, driver, flash, built, level, inset, onFit,
           </span>
         </div>
       )}
-      {portInfo && (
+      {hover?.fleet && (
+        <div className="tip" style={{ left: hover.x + 14, top: hover.y + 10 }}>
+          <span>
+            <b>{hover.fleet.mine ? "Your ship" : hover.fleet.town_name}</b>
+            <span>{hover.fleet.raided ? "Pirates are after this ship!" : hover.fleet.mine ? "The gold ring means it's yours" : hover.fleet.bot ? "Run by the computer" : "A real player"}</span>
+          </span>
+        </div>
+      )}
+      {portInfo && !townMode && (
         <div className="tip" style={{ left: hover!.x + 14, top: hover!.y + 10 }}>
           <span>
             <b>{place(portInfo.name)}</b>

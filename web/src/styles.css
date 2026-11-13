@@ -2658,3 +2658,1383 @@ body.touring .helper {
     animation-iteration-count: 1 !important;
   }
 }
+
+/* ---- The town game ---- */
+
+.pill.streak {
+  padding-right: 10px;
+  background: #ffe9c7;
+}
+
+.pill.streak small {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #c4560c;
+}
+
+.online-chip {
+  padding: 2px 9px;
+  background: #dff7d8;
+  border: 2px solid var(--ink);
+  border-radius: 10px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.fleet-card {
+  flex: none;
+  display: grid;
+  gap: 6px;
+  background: var(--cream);
+  border: 3px solid var(--ink);
+  border-radius: 20px;
+  padding: 8px 11px 10px;
+  box-shadow: 0 4px 0 rgba(59, 42, 30, 0.7);
+}
+
+.fleet-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fleet-top b {
+  flex: 1;
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.ship-art.damaged {
+  transform: rotate(-9deg);
+  filter: grayscale(0.7);
+}
+
+.sail-now {
+  padding: 7px 24px;
+  color: #fff;
+  font-size: 1.35rem;
+  font-weight: 700;
+  text-shadow: 0 2px 0 var(--green-dark);
+  background: linear-gradient(#4fd072, var(--green));
+  border: 3px solid var(--ink);
+  border-radius: 16px;
+  box-shadow: 0 4px 0 var(--ink);
+}
+
+.sail-now:disabled {
+  background: #d9cfc0;
+  text-shadow: none;
+  color: var(--ink);
+}
+
+.at-sea {
+  display: grid;
+  gap: 5px;
+  border-radius: 14px;
+  padding: 8px 10px;
+  transition: background 0.4s;
+}
+
+.water-box-calm {
+  background: #dff4ff;
+}
+
+.water-box-choppy {
+  background: #cfe9ff;
+}
+
+.water-box-rough {
+  background: #ffe6bd;
+}
+
+.water-box-wild {
+  background: #ffc9c0;
+  animation: alarm 0.7s ease-in-out infinite;
+}
+
+@keyframes alarm {
+  50% {
+    background: #ff9f92;
+  }
+}
+
+.trip-where {
+  display: flex;
+  justify-content: space-between;
+  font-weight: 500;
+}
+
+.trip-now {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 2.7rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.trip-now strong {
+  animation: pop 0.3s cubic-bezier(0.2, 1.6, 0.4, 1);
+}
+
+.danger-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.water-word {
+  min-width: 62px;
+  font-weight: 700;
+}
+
+.water-calm {
+  color: var(--green-dark);
+}
+
+.water-choppy {
+  color: var(--blue-dark);
+}
+
+.water-rough {
+  color: #c46a0c;
+}
+
+.water-wild {
+  color: #d13a2e;
+}
+
+.danger-bar {
+  flex: 1;
+  height: 14px;
+  background: #fff;
+  border: 2px solid var(--ink);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.danger-bar i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #55c93d, #ffc531 45%, #e8504a 85%);
+  background-size: 260px 100%;
+  transition: width 0.5s;
+}
+
+.come-home {
+  display: grid;
+  justify-items: center;
+  padding: 7px;
+  color: #fff;
+  font-size: 1.6rem;
+  font-weight: 700;
+  line-height: 1.05;
+  text-shadow: 0 2px 0 rgba(59, 42, 30, 0.55);
+  background: linear-gradient(#ffc04a, #f08a1d);
+  border: 3px solid var(--ink);
+  border-radius: 16px;
+  box-shadow: 0 4px 0 var(--ink);
+  transition: transform 0.08s, box-shadow 0.08s;
+}
+
+.come-home:active:not(:disabled) {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 var(--ink);
+}
+
+.come-home small {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 1.02rem;
+  font-weight: 600;
+}
+
+.come-home.urgent {
+  background: linear-gradient(#ff7a6e, var(--red));
+  animation: wiggle 0.7s ease-in-out infinite;
+}
+
+.chest-note {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  font-size: 0.92rem;
+  font-weight: 500;
+}
+
+.surprise {
+  display: grid;
+  gap: 4px;
+  text-align: center;
+  background: #fff;
+  border: 3px solid var(--ink);
+  border-radius: 14px;
+  padding: 8px;
+  animation: pop 0.3s cubic-bezier(0.2, 1.6, 0.4, 1);
+}
+
+.surprise b {
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.yes-no.even {
+  grid-template-columns: 1fr 1fr;
+}
+
+.fixing {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-weight: 500;
+}
+
+.routes {
+  display: grid;
+  gap: 5px;
+}
+
+.route-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  text-align: left;
+  background: #fff;
+  border: 2.5px solid var(--line);
+  border-radius: 12px;
+}
+
+.route-row:hover:not(:disabled) {
+  border-color: var(--blue);
+}
+
+.route-name {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+}
+
+.route-name b {
+  font-size: 1.04rem;
+  font-weight: 600;
+}
+
+.route-name small {
+  display: flex;
+  gap: 8px;
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.route-time {
+  color: var(--ink-2);
+  font-weight: 500;
+}
+
+.route-row strong {
+  display: grid;
+  justify-items: end;
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--green-dark);
+  line-height: 1.05;
+}
+
+.hot-price {
+  font-style: normal;
+  font-size: 0.74rem;
+  color: #d13a2e;
+}
+
+.protect-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.86rem;
+}
+
+.protect-toggle input {
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+
+/* The town on the land */
+
+.plot {
+  position: absolute;
+  z-index: 2;
+  transform: translate(-50%, -88%);
+  pointer-events: none;
+  animation: build-in 0.5s cubic-bezier(0.2, 1.7, 0.4, 1);
+}
+
+@keyframes build-in {
+  from {
+    transform: translate(-50%, -88%) scale(0.2);
+  }
+}
+
+.town-sign {
+  position: absolute;
+  z-index: 2;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transform: translate(-50%, -50%);
+  padding: 2px 14px;
+  color: #fff;
+  font-size: 1.05rem;
+  font-weight: 600;
+  text-shadow: 0 2px 0 var(--ink);
+  background: linear-gradient(#c98a4e, var(--wood));
+  border: 3px solid var(--ink);
+  border-radius: 10px;
+  box-shadow: 0 3px 0 var(--ink);
+  pointer-events: none;
+}
+
+.collect {
+  position: absolute;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 16px 4px 6px;
+  font-size: 1.5rem;
+  font-weight: 700;
+  background: var(--gold);
+  border: 3px solid var(--ink);
+  border-radius: 26px;
+  box-shadow: 0 4px 0 var(--ink);
+  transform: translate(-50%, -50%);
+  animation: collect-bob 0.9s ease-in-out infinite;
+}
+
+.collect.full {
+  background: linear-gradient(#ffe27a, #ff9f43);
+}
+
+@keyframes collect-bob {
+  50% {
+    transform: translate(-50%, -64%) scale(1.07);
+  }
+}
+
+.town-side {
+  position: absolute;
+  z-index: 6;
+  top: 74px;
+  right: 10px;
+  width: 244px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+
+.goal-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px 8px;
+  text-align: left;
+  background: rgba(255, 248, 232, 0.97);
+  border: 3px solid var(--ink);
+  border-radius: 16px;
+  box-shadow: 0 3px 0 var(--ink);
+}
+
+.goal-card:disabled {
+  opacity: 1;
+  cursor: default;
+}
+
+.goal-card.ready {
+  background: #dcf8c9;
+  animation: wiggle 1.4s ease-in-out infinite;
+}
+
+.goal-card.ready:not(:disabled) {
+  cursor: pointer;
+}
+
+.goal-art {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 56px;
+}
+
+.goal-text {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.goal-text small {
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+
+.goal-text b {
+  font-size: 1.12rem;
+  font-weight: 600;
+  line-height: 1.05;
+}
+
+.goal-cost {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.town-race h3 {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.town-race ol {
+  list-style: none;
+  margin: 3px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.town-race li {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  padding: 1px 5px;
+  border-radius: 8px;
+  font-size: 0.95rem;
+}
+
+.town-race li.you {
+  background: #ffe9a8;
+  font-weight: 600;
+}
+
+.town-race li span {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.race-note {
+  margin-top: 3px;
+  font-size: 0.82rem;
+  color: var(--ink-2);
+}
+
+.town-nav {
+  position: absolute;
+  z-index: 9;
+  left: 386px;
+  bottom: 12px;
+  display: flex;
+  gap: 10px;
+}
+
+.town-nav button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  width: 86px;
+  height: 72px;
+  padding: 2px 2px 3px;
+  font-size: 1.02rem;
+  font-weight: 600;
+  line-height: 1;
+  background: var(--cream);
+  border: 3px solid var(--ink);
+  border-radius: 16px;
+  box-shadow: 0 4px 0 var(--ink);
+}
+
+.town-nav button:hover {
+  filter: brightness(1.05);
+  transform: translateY(-2px);
+}
+
+.town-nav button.ready {
+  background: linear-gradient(#c5f4a0, #84de5c);
+  animation: wiggle 1.3s ease-in-out infinite;
+}
+
+.rank-badge {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  margin-bottom: 3px;
+  font-size: 1.2rem;
+  font-weight: 700;
+  background: var(--gold);
+  border: 3px solid var(--ink);
+  border-radius: 50%;
+}
+
+/* Treasure */
+
+.chest-back {
+  position: fixed;
+  inset: 0;
+  z-index: 28;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(10, 60, 90, 0.5);
+}
+
+.chest-pop {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  min-width: min(380px, 92vw);
+  padding: 18px 40px 22px;
+  background: radial-gradient(circle at 50% 42%, #fff3c4, var(--cream) 72%);
+  border: 5px solid var(--ink);
+  border-radius: 30px;
+  box-shadow: 0 10px 0 var(--ink);
+  animation: pop 0.35s cubic-bezier(0.2, 1.6, 0.4, 1);
+}
+
+.chest-pop:not(.open) .chest-art {
+  animation: chest-shake 0.55s ease-in-out infinite;
+  transform-origin: 50% 85%;
+}
+
+@keyframes chest-shake {
+  25% {
+    transform: rotate(-4deg) scale(1.03);
+  }
+  75% {
+    transform: rotate(4deg) scale(1.03);
+  }
+}
+
+.chest-title {
+  font-size: 2rem;
+  font-weight: 700;
+}
+
+.chest-tap {
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: var(--blue-dark);
+}
+
+.chest-coins {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 3.5rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--green-dark);
+  animation: pop 0.4s cubic-bezier(0.2, 1.6, 0.4, 1);
+}
+
+.chest-streak {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: #c4560c;
+}
+
+.chest-burst {
+  position: absolute;
+  left: 50%;
+  top: 44%;
+  pointer-events: none;
+}
+
+.chest-burst i {
+  position: absolute;
+  margin: -13px;
+  animation: burst 0.85s ease-out forwards;
+}
+
+@keyframes burst {
+  from {
+    transform: rotate(var(--a)) translateX(0) scale(0.4);
+    opacity: 1;
+  }
+  to {
+    transform: rotate(var(--a)) translateX(var(--d)) scale(1);
+    opacity: 0;
+  }
+}
+
+.level-badge.huge {
+  width: 96px;
+  height: 96px;
+  font-size: 3rem;
+}
+
+.level-news {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 16px;
+}
+
+.level-news span {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  font-weight: 600;
+}
+
+/* What your coins can buy */
+
+.modal.sheet {
+  width: min(700px, 100%);
+  padding: 0;
+  gap: 0;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.sheet-tabs {
+  display: flex;
+  align-items: flex-end;
+  gap: 5px;
+  padding: 10px 12px 0;
+  background: var(--wood);
+  border-bottom: 4px solid var(--ink);
+}
+
+.sheet-tabs button {
+  padding: 7px 16px;
+  font-size: 1.1rem;
+  font-weight: 600;
+  background: var(--cream-2);
+  border: 3px solid var(--ink);
+  border-bottom: none;
+  border-radius: 12px 12px 0 0;
+}
+
+.sheet-tabs button.on {
+  background: var(--cream);
+}
+
+.sheet-tabs .sheet-close {
+  margin: 0 0 6px auto;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  font-size: 1.5rem;
+  line-height: 1;
+  border-bottom: 3px solid var(--ink);
+  border-radius: 50%;
+}
+
+.sheet-body {
+  display: grid;
+  gap: 10px;
+  padding: 12px 16px 16px;
+  overflow-y: auto;
+}
+
+.sheet-coins {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  justify-self: end;
+  font-size: 1.3rem;
+  font-weight: 700;
+}
+
+.shop-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.shop-item {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  align-content: start;
+  gap: 2px;
+  padding: 10px 8px;
+  text-align: center;
+  background: #fff;
+  border: 3px solid var(--ink);
+  border-radius: 16px;
+  box-shadow: 0 3px 0 var(--ink);
+  transition: transform 0.08s;
+}
+
+.shop-item:hover:not(:disabled) {
+  transform: translateY(-2px);
+}
+
+.shop-item:disabled {
+  opacity: 1;
+  background: #f3ecdd;
+}
+
+.shop-item.locked > * {
+  opacity: 0.55;
+}
+
+.shop-item b {
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.shop-item small {
+  font-size: 0.82rem;
+  min-height: 2.1em;
+}
+
+.price {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 1.06rem;
+  font-weight: 700;
+}
+
+.price.short {
+  color: var(--red-dark);
+}
+
+.price.done {
+  color: var(--green-dark);
+}
+
+.owned-count {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  font-style: normal;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.sheet-head {
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.sheet-note {
+  font-size: 0.95rem;
+  color: var(--ink-2);
+}
+
+.upgrade-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #fff;
+  border: 2.5px solid var(--line);
+  border-radius: 12px;
+  padding: 6px 10px;
+}
+
+.upgrade-row b {
+  min-width: 70px;
+  font-weight: 600;
+}
+
+.upgrade-buttons {
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.town-rank {
+  list-style: none;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.town-rank li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  background: #fff;
+  border: 2.5px solid var(--line);
+  border-radius: 12px;
+  font-weight: 500;
+}
+
+.town-rank li.you {
+  background: #fff3c4;
+  border-color: var(--ink);
+}
+
+.town-rank li span {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+}
+
+.town-rank strong {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.real-badge {
+  margin-left: 6px;
+  font-style: normal;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #7a3fb0;
+}
+
+.raid-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.title-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 16px;
+}
+
+@media (min-width: 901px) and (max-width: 1320px) {
+  .town-game .helper {
+    bottom: 92px;
+  }
+}
+
+@media (max-width: 900px) {
+  .town-game {
+    padding-bottom: 86px;
+  }
+
+  .town-game .sea {
+    height: 38vh;
+  }
+
+  .surprise ~ .chest-note {
+    display: none;
+  }
+
+  .town-side {
+    position: static;
+    width: auto;
+    padding: 10px 16px 0;
+    background: var(--sea);
+  }
+
+  .town-race {
+    display: none;
+  }
+
+  .town-nav {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    justify-content: space-around;
+    padding: 6px 8px;
+    background: var(--wood);
+    border-top: 4px solid var(--ink);
+  }
+
+  .town-nav button {
+    width: 74px;
+    height: 64px;
+    font-size: 0.92rem;
+  }
+
+  .collect {
+    font-size: 1.15rem;
+  }
+
+  .town-sign {
+    font-size: 0.85rem;
+    padding: 1px 8px;
+  }
+
+  .sheet-tabs button {
+    padding: 6px 10px;
+    font-size: 1rem;
+  }
+
+  .shop-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* Playing together */
+
+.raid-warning,
+.convoy-note {
+  padding: 3px 8px;
+  border-radius: 10px;
+  text-align: center;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.raid-warning {
+  color: #fff;
+  background: var(--red);
+  animation: wiggle 0.7s ease-in-out infinite;
+}
+
+.convoy-note {
+  color: #5b2d91;
+  background: #efe3ff;
+}
+
+.convoy-tag {
+  color: #7a3fb0;
+  font-weight: 600;
+}
+
+.talk h3 {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.talk ul {
+  list-style: none;
+  margin: 3px 0 6px;
+  padding: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.talk li {
+  font-size: 0.88rem;
+  line-height: 1.15;
+}
+
+.talk li span {
+  display: block;
+}
+
+.talk li small {
+  font-size: 0.76rem;
+  color: var(--ink-2);
+}
+
+.talk-empty {
+  color: var(--ink-2);
+}
+
+.talk-name {
+  padding: 0;
+  background: none;
+  border: none;
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: var(--blue-dark);
+}
+
+.talk-name:disabled {
+  opacity: 1;
+  cursor: default;
+  color: #c47d00;
+}
+
+.talk li.real .talk-name {
+  color: #7a3fb0;
+}
+
+.say-open {
+  width: 100%;
+  justify-content: center;
+}
+
+.phrases {
+  position: absolute;
+  z-index: 12;
+  top: 0;
+  right: calc(100% + 8px);
+  width: min(380px, 62vw);
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  background: var(--cream);
+  border: 3px solid var(--ink);
+  border-radius: 16px;
+  box-shadow: 0 4px 0 var(--ink);
+}
+
+.say-to {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+}
+
+.say-to select {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  padding: 3px 6px;
+  font: inherit;
+  border: 2.5px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+}
+
+.phrase-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+}
+
+.phrase-grid button {
+  padding: 4px 6px;
+  font-size: 0.88rem;
+  font-weight: 500;
+  background: #fff;
+  border: 2.5px solid var(--line);
+  border-radius: 10px;
+}
+
+.phrase-grid button:hover:not(:disabled) {
+  border-color: var(--blue);
+}
+
+.friends {
+  display: grid;
+  gap: 8px;
+}
+
+.friend {
+  display: grid;
+  gap: 5px;
+  padding: 7px 10px;
+  background: #f6efff;
+  border: 2.5px solid #bfa3e0;
+  border-radius: 12px;
+}
+
+.friend-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.friend-top b {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+}
+
+.friend-top strong {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.online-dot {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  background: #cfc6ba;
+  border: 2px solid var(--ink);
+  border-radius: 50%;
+}
+
+.online-dot.on {
+  background: #55c93d;
+}
+
+.mini-town {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  min-height: 26px;
+  align-items: center;
+}
+
+.mini-town.empty {
+  font-size: 0.82rem;
+  color: var(--ink-2);
+}
+
+.mini-town span {
+  position: relative;
+}
+
+.mini-town i {
+  position: absolute;
+  right: -3px;
+  bottom: -2px;
+  font-style: normal;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.friend-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+@media (max-width: 900px) {
+  .phrases {
+    position: static;
+    width: auto;
+    margin-top: 6px;
+  }
+}
+
+/* The town game's side cards fill their column, and talk reads as sentences. */
+
+.town-side .race {
+  width: 100%;
+}
+
+.town-side .race li {
+  grid-template-columns: none;
+}
+
+.town-side .race ol li {
+  display: flex;
+}
+
+.town-side .talk ul {
+  max-height: 112px;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.town-side .talk li {
+  display: block;
+  padding: 2px 5px;
+  border-radius: 8px;
+  overflow-wrap: anywhere;
+}
+
+.town-side .talk li.you {
+  background: #ffe9a8;
+}
+
+.town-side .talk li .talk-name,
+.town-side .talk li small {
+  display: inline;
+  margin-right: 4px;
+}
+
+.town-side .talk li span {
+  display: block;
+  font-weight: 500;
+}
+
+.talk-type {
+  display: flex;
+  gap: 5px;
+}
+
+.talk-type input {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 8px;
+  font: inherit;
+  font-size: 0.92rem;
+  background: #fff;
+  border: 2.5px solid var(--line);
+  border-radius: 10px;
+}
+
+.talk-type input:focus {
+  border-color: var(--blue);
+  outline: none;
+}
+
+.talk-warning {
+  font-size: 0.72rem;
+  line-height: 1.15;
+  color: var(--ink-2);
+}
+
+.mute-link {
+  justify-self: start;
+  font-size: 0.8rem;
+}
+
+/* On a phone, the ship you're sailing comes straight after the map, and talk after that. */
+@media (max-width: 900px) {
+  .town-game {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .town-game .bar {
+    order: 0;
+  }
+
+  .town-game .sea {
+    order: 1;
+    flex: none;
+  }
+
+  .town-game .fleet {
+    order: 2;
+    padding-bottom: 6px;
+  }
+
+  .town-game .town-side {
+    order: 3;
+    padding: 0 16px 12px;
+  }
+}
+
+/* Saying plainly who is a person and who is the computer. */
+
+.bot-tag {
+  flex: none;
+  margin: 0 4px;
+  padding: 0 4px;
+  font-style: normal;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--ink-2);
+  background: #efe7d6;
+  border-radius: 5px;
+}
+
+.friend-status {
+  color: var(--ink-2);
+}
+
+.friend-status.on {
+  color: var(--green-dark);
+  font-weight: 600;
+}
+
+/* Your own NEAR wallet, and sharing on near.social. */
+.title-wallet {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 2px 14px;
+}
+
+.wallet-chip {
+  max-width: 14rem;
+  padding: 2px 9px;
+  overflow: hidden;
+  background: #e3f1ff;
+  border: 2px solid var(--ink);
+  border-radius: 10px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.social-button {
+  padding: 6px 12px;
+  background: #e3f1ff;
+  border: 3px solid var(--ink);
+  border-radius: 16px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  box-shadow: 0 3px 0 var(--ink);
+  white-space: nowrap;
+}
+
+.social-modal h2 {
+  margin: 0;
+}
+
+.social-who {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: #fff;
+  border: 3px solid var(--ink);
+  border-radius: 16px;
+}
+
+.social-who img,
+.social-blank {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border: 2px solid var(--ink);
+  border-radius: 50%;
+  background: var(--sky);
+  object-fit: cover;
+}
+
+.social-who span {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+}
+
+.social-who small {
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+.social-text {
+  display: grid;
+  gap: 4px;
+  font-weight: 600;
+}
+
+.social-text textarea {
+  font: inherit;
+  font-weight: 400;
+  padding: 8px 12px;
+  background: #fff;
+  border: 3px solid var(--ink);
+  border-radius: 14px;
+  color: var(--ink);
+  resize: vertical;
+}
+
+.social-text small {
+  justify-self: end;
+  font-weight: 400;
+  color: var(--ink-2);
+}
+
+.social-done {
+  margin: 0;
+  font-weight: 600;
+  color: var(--green-dark);
+}
+
+@media (max-width: 900px) {
+  .wallet-chip {
+    display: none;
+  }
+
+  .social-button {
+    padding: 4px 9px;
+    font-size: 0.85rem;
+  }
+}

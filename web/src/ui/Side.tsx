@@ -18,6 +18,8 @@ export interface RouteReading {
 export interface Hood {
   contract: string | null;
   account: string | null;
+  /** True when `account` is the player's own wallet rather than a guest account. */
+  wallet: boolean;
   lastTx: string | null;
   sea: RouteReading[];
   seaUpdated: number | null;
@@ -492,11 +494,16 @@ function Under({ view, hood, onRunWeek, onSpiral, onSummon, onSkip, practice }: 
               {hood.contract}
             </a>
           </dd>
-          <dt>Your account</dt>
+          <dt>{hood.wallet ? "Your NEAR wallet" : "Your account"}</dt>
           <dd>
             <a href={`${hood.explorer}/address/${hood.account}`} target="_blank" rel="noreferrer">
               {hood.account}
             </a>
+            <small className="muted">
+              {hood.wallet
+                ? " Your own account. Everything your town earns is paid to it, and its coins and ships are tokens it holds in the contract."
+                : " A guest account made for you. Connect your own NEAR wallet on the start screen to play as your own account."}
+            </small>
           </dd>
           {hood.lastTx && (
             <>

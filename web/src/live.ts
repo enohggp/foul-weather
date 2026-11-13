@@ -1,7 +1,9 @@
-// The live Room on NEAR testnet. Every NEAR call in the game lives in this file.
+// The live Room on NEAR testnet. Every NEAR call to the game's contract lives in this file.
 //
-// There is no game server. The browser makes a testnet account in the background,
-// keeps its key on this device, and signs each move without showing a wallet.
+// There is no game server. A guest gets a testnet account made in the background, with
+// its key kept on this device. A player can instead connect their own NEAR wallet (see
+// wallet.ts), which adds a key to their account that can only call this contract. Either
+// way, each move is signed on this device with no popup.
 
 import { generateKey, Near } from "near-kit";
 import type { Action, Driver, Receipt, Role, View } from "./types";
@@ -9,18 +11,54 @@ import type { Action, Driver, Receipt, Role, View } from "./types";
 export const CONTRACT: string = import.meta.env.VITE_FW_CONTRACT ?? "foulweather-harbor.testnet";
 export const EXPLORER = "https://testnet.nearblocks.io";
 
-const RPC = "https://rpc.testnet.fastnear.com";
+// Public testnet servers. When one is busy or rate-limited, the next one takes over.
+const RPCS = ["https://rpc.testnet.fastnear.com", "https://rpc.testnet.near.org", "https://near-testnet.drpc.org"];
+const RETRY = { maxRetries: 1, initialDelayMs: 350 };
 const ACCOUNT_HELPER = "https://helper.nearprotocol.com/account";
 const STORE_KEY = "fw-live-account";
 const POLL_MS = 2500;
+/** A tab stops paying to move the world once nobody has touched it for this long. */
+const IDLE_AFTER_MS = 120_000;
+const SIGNS_OF_LIFE = ["pointerdown", "pointermove", "keydown", "touchstart", "wheel"] as const;
 // Prepaid gas is reserved from the key's allowance at 0.001 NEAR per Tgas, so keep
-// this close to what a call really burns. A watch costs about 6 Tgas.
-const ACTION_GAS = "40 Tgas";
+// this close to what a call really burns. A move burns about 3 Tgas and a watch about 8.
+const ACTION_GAS = "15 Tgas";
 const TICK_GAS = "80 Tgas";
-const network = { networkId: "testnet", rpcUrl: RPC };
 const LATEST = { finality: "optimistic" } as const;
 
-interface Saved {
+type NearSetup = { privateKey?: `ed25519:${string}`; defaultSignerId?: string };
+
+/** One client for each server, all acting for the same account. */
+function servers(setup: NearSetup = {}) {
+  return RPCS.map((rpcUrl) => new Near({ network: { networkId: "testnet", rpcUrl }, retryConfig: RETRY, ...setup }));
+}
+
+/** The server that answered last, which is tried first next time. */
+let preferred = 0;
+
+function isServerTrouble(error: unknown) {
+  return (error as { retryable?: boolean })?.retryable === true;
+}
+
+/** Runs a request that is safe to repeat, on each server in turn until one answers. */
+async function viaAnyServer<T>(clients: Near[], run: (near: Near) => Promise<T>): Promise<T> {
+  let last: unknown;
+  for (let i = 0; i < clients.length; i++) {
+    const at = (preferred + i) % clients.length;
+    try {
+      const result = await run(clients[at]);
+      preferred = at;
+      return result;
+    } catch (error) {
+      if (!isServerTrouble(error)) throw error;
+      last = error;
+    }
+  }
+  throw last;
+}
+
+/** An account this device can sign for: a guest's, or a key added to the player's own wallet. */
+export interface Saved {
   accountId: string;
   secretKey: string;
 }
@@ -37,10 +75,49 @@ interface Outcome {
   status: { SuccessValue?: string };
 }
 
+interface Rpc {
+  sendTransaction(bytes: Uint8Array, waitUntil: string): Promise<Outcome>;
+  getAccessKey(account: string, key: string): Promise<unknown>;
+}
+
+const rpcOf = (near: Near) => (near as unknown as { rpc: Rpc }).rpc;
+
+/**
+ * Signs a call once, then offers those same signed bytes to each server in turn.
+ * If a server goes quiet after the network has already taken the transaction,
+ * offering it again elsewhere can't make it happen twice. Returns null when the
+ * chain shows it already went through but no server could report the result.
+ */
+async function callOnce(clients: Near[], signer: string, method: string, args: object, gas: string): Promise<Outcome | null> {
+  const build = (near: Near) => near.transaction(signer).functionCall(CONTRACT, method, args, { gas: gas as `${number} Tgas` });
+  const signed = await viaAnyServer(clients, (near) => build(near).sign());
+  const bytes = signed.serialize();
+  let offered = false;
+  let last: unknown;
+  for (let i = 0; i < clients.length; i++) {
+    const at = (preferred + i) % clients.length;
+    try {
+      const outcome = await rpcOf(clients[at]).sendTransaction(bytes, "EXECUTED_OPTIMISTIC");
+      preferred = at;
+      return outcome;
+    } catch (error) {
+      if ((error as Error)?.name === "InvalidNonceError") {
+        if (offered) return null;
+        // This key was used elsewhere, so nothing happened yet. Sign afresh.
+        return (await build(clients[at]).send({ waitUntil: "EXECUTED_OPTIMISTIC" })) as unknown as Outcome;
+      }
+      if (!isServerTrouble(error)) throw error;
+      offered = true;
+      last = error;
+    }
+  }
+  throw last;
+}
+
 /** A guest gets a separate account for each role, so one device can try both sides. */
 function storeKey(role: Role, identity?: string) {
   const base = identity ? `${STORE_KEY}:${identity}` : STORE_KEY;
-  return role.kind === "captain" && !identity ? `${base}:captain` : base;
+  return role.kind !== "shop" && !identity ? `${base}:${role.kind}` : base;
 }
 
 function loadAccount(role: Role, identity?: string): Saved | null {
@@ -74,22 +151,17 @@ async function viaFaucet(publicKey: string): Promise<string | null> {
 
 /** The contract's front door: a public key that can only open accounts. */
 async function viaFrontDoor(publicKey: string, identity?: string): Promise<string | null> {
-  const reader = new Near({ network });
-  const door = await reader.view<string>(CONTRACT, "front_door", {});
+  const door = await viaAnyServer(servers(), (near) => near.view<string>(CONTRACT, "front_door", {}));
   if (!door) return null;
-  const near = new Near({ network, privateKey: door as `ed25519:${string}`, defaultSignerId: CONTRACT });
-  const outcome = (await near
-    .transaction(CONTRACT)
-    .functionCall(CONTRACT, "open_account", { public_key: publicKey, identity: identity ?? null }, { gas: "60 Tgas" })
-    .send({ waitUntil: "EXECUTED_OPTIMISTIC" })) as unknown as Outcome;
-  const value = outcome.status?.SuccessValue;
+  const clients = servers({ privateKey: door as `ed25519:${string}`, defaultSignerId: CONTRACT });
+  const outcome = await callOnce(clients, CONTRACT, "open_account", { public_key: publicKey, identity: identity ?? null }, "60 Tgas");
+  const value = outcome?.status?.SuccessValue;
   return value ? (JSON.parse(atob(value)) as string) : null;
 }
 
-async function hasKey(accountId: string, publicKey: string): Promise<boolean> {
-  const reader = new Near({ network });
-  const rpc = (reader as unknown as { rpc: { getAccessKey(a: string, k: string): Promise<unknown> } }).rpc;
-  return rpc.getAccessKey(accountId, publicKey).then(
+/** Whether this key is on that account right now. */
+export async function hasKey(accountId: string, publicKey: string): Promise<boolean> {
+  return viaAnyServer(servers(), (near) => rpcOf(near).getAccessKey(accountId, publicKey)).then(
     () => true,
     () => false,
   );
@@ -124,6 +196,9 @@ async function createAccount(identity?: string): Promise<Saved> {
 function plainError(error: unknown): string {
   const raw = error as { panic?: string; message?: string };
   const text = raw?.panic ?? raw?.message ?? "That could not be done.";
+  if (/NotEnoughAllowance|allowance/i.test(text)) {
+    return "The game's key on your wallet has used up its gas allowance. Go back to the start and connect your wallet again.";
+  }
   return text.replace(/^Smart contract panicked:\s*/i, "").replace(/\s*\(.*$/s, "");
 }
 
@@ -155,6 +230,36 @@ function methodFor(action: Action): { method: string; args: object } | null {
       return { method: "sail_now", args: {} };
     case "scuttle":
       return { method: "scuttle", args: {} };
+    case "open_town":
+      return { method: "open_town", args: { name: action.name } };
+    case "send_ship":
+      return { method: "send_ship", args: { ship: action.ship, lane: action.lane, protect: action.protect } };
+    case "come_home":
+      return { method: "come_home", args: { ship: action.ship } };
+    case "answer_surprise":
+      return { method: "answer_surprise", args: { ship: action.ship, yes: action.yes } };
+    case "collect_town":
+      return { method: "collect_town", args: {} };
+    case "build":
+      return { method: "build", args: { building: action.building } };
+    case "hire":
+      return { method: "hire", args: { crew: action.crew } };
+    case "buy_ship":
+      return { method: "buy_ship", args: { class: action.class } };
+    case "upgrade_ship":
+      return { method: "upgrade_ship", args: { ship: action.ship, part: action.part } };
+    case "repair_ship":
+      return { method: "repair_ship", args: { ship: action.ship } };
+    case "raid":
+      return { method: "raid", args: { town: action.town, ship: action.ship } };
+    case "help_town":
+      return { method: "help_town", args: { town: action.town } };
+    case "send_gift":
+      return { method: "send_gift", args: { town: action.town, coins: action.coins } };
+    case "say":
+      return { method: "say", args: { phrase: action.phrase, to: action.to } };
+    case "say_text":
+      return { method: "say_text", args: { text: action.text, to: action.to } };
     default:
       return null;
   }
@@ -172,50 +277,64 @@ export class LiveDriver implements Driver {
   private lastSeq = "";
   private polling = false;
   private houseName: string;
+  private failedPolls = 0;
+  private lastActive = Date.now();
+  private noteActive = () => {
+    this.lastActive = Date.now();
+  };
   /** The contract's public tick key pays for ticks, so they don't drain the player. */
-  private ticker: Near | null = null;
+  private ticker: Near[] | null = null;
   /** Hash of the player's latest transaction, for the "Under the hood" panel. */
   onTransaction: ((hash: string) => void) | null = null;
 
   private constructor(
-    private near: Near,
+    private near: Near[],
     readonly accountId: string,
     houseName: string,
     private role: Role,
+    /** The player's own wallet. Its gas is theirs, so it never pays to move the world on. */
+    readonly ownWallet: boolean,
   ) {
     this.houseName = houseName;
+    for (const sign of SIGNS_OF_LIFE) window.addEventListener(sign, this.noteActive, { passive: true });
+  }
+
+  /** Every tick costs the contract NEAR, so only a tab someone is using sends one. */
+  private someoneIsHere() {
+    if (document.body.classList.contains("touring")) return true;
+    return document.visibilityState === "visible" && Date.now() - this.lastActive < IDLE_AFTER_MS;
   }
 
   /** A look at the town with no account, to choose a role and a ship. */
   static async peek(): Promise<View | null> {
-    return (await new Near({ network }).view<View>(CONTRACT, "get_view", { viewer: null }, LATEST)) ?? null;
+    return (await viaAnyServer(servers(), (near) => near.view<View>(CONTRACT, "get_view", { viewer: null }, LATEST))) ?? null;
   }
 
-  /** Opens or reopens this device's account, and takes up the chosen role. */
+  /**
+   * Opens or reopens this device's account, and takes up the chosen role. Pass `own` to
+   * play as the player's own wallet account instead of a guest account.
+   */
   static async connect(
     houseName: string,
     progress: (message: string) => void,
     role: Role,
     identity?: string,
+    own?: Saved,
   ): Promise<LiveDriver> {
-    let account = loadAccount(role, identity);
+    let account = own ?? loadAccount(role, identity);
     if (!account) {
       progress("Opening your account…");
       account = await createAccount(identity);
       saveAccount(account, role, identity);
     }
-    const near = new Near({
-      network,
-      privateKey: account.secretKey as `ed25519:${string}`,
-      defaultSignerId: account.accountId,
-    });
-    const driver = new LiveDriver(near, account.accountId, houseName, role);
+    const near = servers({ privateKey: account.secretKey as `ed25519:${string}`, defaultSignerId: account.accountId });
+    const driver = new LiveDriver(near, account.accountId, houseName, role, Boolean(own));
     progress("Heading down to the harbor…");
     await driver.refresh();
     if (!driver.view) throw new Error("The harbor is not answering. Try practice mode.");
     await driver.ensureRole();
-    const key = await near.view<string>(CONTRACT, "tick_key", {}, LATEST).catch(() => null);
-    if (key) driver.ticker = new Near({ network, privateKey: key as `ed25519:${string}`, defaultSignerId: CONTRACT });
+    const key = await viaAnyServer(near, (client) => client.view<string>(CONTRACT, "tick_key", {}, LATEST)).catch(() => null);
+    if (key) driver.ticker = servers({ privateKey: key as `ed25519:${string}`, defaultSignerId: CONTRACT });
     driver.schedule();
     return driver;
   }
@@ -227,7 +346,14 @@ export class LiveDriver implements Driver {
   /** Takes up the player's role, now and again after each new season. */
   private async ensureRole() {
     const view = this.view;
-    if (!view || view.intermission !== null) return;
+    if (!view) return;
+    if (this.role.kind === "town") {
+      if (view.town) return;
+      await this.send("open_town", { name: this.houseName });
+      await this.refresh();
+      return;
+    }
+    if (view.intermission !== null) return;
     if (this.role.kind === "shop") {
       if (this.you()) return;
       await this.send("found_house", { name: this.houseName, agent: false });
@@ -242,10 +368,8 @@ export class LiveDriver implements Driver {
   }
 
   private async send(method: string, args: object, gas = ACTION_GAS): Promise<Receipt> {
-    const outcome = (await this.near
-      .transaction(this.accountId)
-      .functionCall(CONTRACT, method, args, { gas: gas as `${number} Tgas` })
-      .send({ waitUntil: "EXECUTED_OPTIMISTIC" })) as unknown as Outcome;
+    const outcome = await callOnce(this.near, this.accountId, method, args, gas);
+    if (!outcome) return { result: "done" };
     const hash = outcome.transaction?.hash;
     if (hash) this.onTransaction?.(hash);
     const value = outcome.status?.SuccessValue;
@@ -260,7 +384,7 @@ export class LiveDriver implements Driver {
   }
 
   private async refresh() {
-    const view = await this.near.view<View>(CONTRACT, "get_view", { viewer: this.accountId }, LATEST);
+    const view = await viaAnyServer(this.near, (near) => near.view<View>(CONTRACT, "get_view", { viewer: this.accountId }, LATEST));
     if (!view) return;
     if (view.watch !== this.lastWatch) {
       this.lastWatch = view.watch;
@@ -272,14 +396,16 @@ export class LiveDriver implements Driver {
 
   private schedule() {
     if (this.stopped) return;
-    this.timer = window.setTimeout(() => void this.poll(), POLL_MS);
+    // When every server is struggling, ask less often until one recovers.
+    this.timer = window.setTimeout(() => void this.poll(), POLL_MS * 2 ** Math.min(this.failedPolls, 3));
   }
 
   private async poll() {
     if (this.stopped || this.polling) return;
     this.polling = true;
     try {
-      const status = await this.near.view<Status>(CONTRACT, "status", {}, LATEST);
+      const status = await viaAnyServer(this.near, (near) => near.view<Status>(CONTRACT, "status", {}, LATEST));
+      this.failedPolls = 0;
       if (status) {
         const key = `${status.season}:${status.watch}:${status.seq}`;
         if (key !== this.lastSeq) {
@@ -287,9 +413,11 @@ export class LiveDriver implements Driver {
           await this.refresh();
           await this.ensureRole();
         }
-        // Anyone may move the world on. A little jitter keeps players from colliding.
-        const due = Number(status.next_tick_ms) + Math.random() * 1500;
-        if (Date.now() >= due && !this.ticking) {
+        // Anyone may move the world on. The more people are around, the more this
+        // spreads them out, so they don't all try at the same moment.
+        const around = Math.max(1, this.view?.towns.filter((t) => t.online).length ?? 1);
+        const due = Number(status.next_tick_ms) + Math.random() * (1000 + 500 * around);
+        if (this.someoneIsHere() && Date.now() >= due && !this.ticking) {
           this.ticking = true;
           void this.tick()
             .catch(() => undefined)
@@ -300,6 +428,7 @@ export class LiveDriver implements Driver {
       }
     } catch {
       // A missed poll is harmless. The next one will catch up.
+      this.failedPolls += 1;
     } finally {
       this.polling = false;
       this.schedule();
@@ -308,16 +437,16 @@ export class LiveDriver implements Driver {
 
   private async tick() {
     if (this.ticker) {
-      const paid = await this.ticker
-        .transaction(CONTRACT)
-        .functionCall(CONTRACT, "tick", {}, { gas: TICK_GAS })
-        .send({ waitUntil: "EXECUTED_OPTIMISTIC" })
-        .then(
-          () => true,
-          () => false,
-        );
+      const paid = await viaAnyServer(this.ticker, (near) =>
+        near.transaction(CONTRACT).functionCall(CONTRACT, "tick", {}, { gas: TICK_GAS }).send({ waitUntil: "EXECUTED_OPTIMISTIC" }),
+      ).then(
+        () => true,
+        () => false,
+      );
       if (paid) return;
     }
+    // A guest's gas came with the game. A wallet's is the player's own, so leave it to others.
+    if (this.ownWallet) return;
     await this.send("tick", {}, TICK_GAS);
   }
 
@@ -330,6 +459,7 @@ export class LiveDriver implements Driver {
   async act(action: Action): Promise<Receipt> {
     const call = methodFor(action);
     if (!call) throw new Error("That is only possible in a practice harbor.");
+    this.noteActive();
     try {
       const receipt = await this.send(call.method, call.args);
       await this.refresh();
@@ -350,5 +480,6 @@ export class LiveDriver implements Driver {
   stop() {
     this.stopped = true;
     window.clearTimeout(this.timer);
+    for (const sign of SIGNS_OF_LIFE) window.removeEventListener(sign, this.noteActive);
   }
 }

@@ -36,6 +36,30 @@ pub enum Action {
     SailNow,
     /// Sink your own protected ship for the money. Shops may look into it.
     Scuttle,
+    /// Start your own town, with one small boat.
+    OpenTown { name: String },
+    /// Send a ship to an island, with or without an insurer behind it.
+    SendShip { ship: u32, lane: u8, protect: bool },
+    /// Bring a ship home now and bank what its cargo has earned so far.
+    ComeHome { ship: u32 },
+    /// Answer whatever just happened to a ship at sea.
+    AnswerSurprise { ship: u32, yes: bool },
+    CollectTown,
+    Build { building: u8 },
+    Hire { crew: u8 },
+    BuyShip { class: u8 },
+    UpgradeShip { ship: u32, part: u8 },
+    RepairShip { ship: u32 },
+    /// Send pirates after another town's ship.
+    Raid { town: u16, ship: u32 },
+    /// Give a real player's town a hand. You both get a little something.
+    HelpTown { town: u16 },
+    /// Send some of your coins to a real player's town.
+    SendGift { town: u16, coins: u64 },
+    /// Say one of the harbor's phrases, to everyone or to one town.
+    Say { phrase: u8, to: Option<u16> },
+    /// Say something in your own words, to everyone or to one town.
+    SayText { text: String, to: Option<u16> },
     /// Sandbox only: hand the desk to a clerk while fast-forwarding.
     SetClerk { on: bool },
     /// Sandbox only: send a great storm for demonstration.
@@ -56,10 +80,48 @@ pub enum Receipt {
 impl World {
     /// Carries out `action` for `who`, the account that signed it.
     pub fn act(&mut self, who: &str, action: Action, entropy: &[u8; 32]) -> Result<Receipt, String> {
-        if self.intermission.is_some() && !matches!(action, Action::NextSeason) {
+        let open_all_year = matches!(
+            action,
+            Action::NextSeason
+                | Action::OpenTown { .. }
+                | Action::CollectTown
+                | Action::Build { .. }
+                | Action::Hire { .. }
+                | Action::BuyShip { .. }
+                | Action::UpgradeShip { .. }
+                | Action::RepairShip { .. }
+                | Action::HelpTown { .. }
+                | Action::SendGift { .. }
+                | Action::Say { .. }
+                | Action::SayText { .. }
+        );
+        if self.intermission.is_some() && !open_all_year {
             return Err("the Room is closed until the new season".into());
         }
+        let outcome = self.perform(who, action, entropy);
+        if outcome.is_ok() {
+            self.note_seen(who);
+        }
+        outcome
+    }
+
+    fn perform(&mut self, who: &str, action: Action, entropy: &[u8; 32]) -> Result<Receipt, String> {
         match action {
+            Action::OpenTown { name } => self.open_town(who, &name),
+            Action::SendShip { ship, lane, protect } => self.send_ship(who, ship, lane, protect),
+            Action::ComeHome { ship } => self.come_home(who, ship),
+            Action::AnswerSurprise { ship, yes } => self.answer_surprise(who, ship, yes),
+            Action::CollectTown => self.collect_town(who),
+            Action::Build { building } => self.build(who, building),
+            Action::Hire { crew } => self.hire(who, crew),
+            Action::BuyShip { class } => self.buy_ship(who, class),
+            Action::UpgradeShip { ship, part } => self.upgrade_ship(who, ship, part),
+            Action::RepairShip { ship } => self.repair_ship(who, ship),
+            Action::Raid { town, ship } => self.raid(who, town, ship),
+            Action::HelpTown { town } => self.help_town(who, town),
+            Action::SendGift { town, coins } => self.send_gift(who, town, coins),
+            Action::Say { phrase, to } => self.say(who, phrase, to),
+            Action::SayText { text, to } => self.say_text(who, &text, to),
             Action::FoundHouse { name, agent } => self.found_house(who, &name, agent),
             Action::Quote { slip, rate_bps, line_bps } => self.quote(who, slip, rate_bps, line_bps),
             Action::Survey { slip } => self.survey(who, slip, entropy),
@@ -502,7 +564,7 @@ impl World {
     }
 }
 
-fn clean_name(name: &str) -> Result<String, String> {
+pub(crate) fn clean_name(name: &str) -> Result<String, String> {
     let name = name.trim();
     let count = name.chars().count();
     if !(2..=32).contains(&count) {

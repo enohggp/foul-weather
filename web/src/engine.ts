@@ -59,6 +59,8 @@ function scriptedEntropy(seed: number, step: number): number[] {
 }
 
 export const NORMAL_WATCH_MS = 6500;
+/** Sailing your own ships is quicker: long enough to react, short enough to stay exciting. */
+export const TOWN_WATCH_MS = 3500;
 /** A week of 42 watches in one minute. */
 export const WEEK_IN_A_MINUTE_MS = Math.round(60000 / 42);
 /** The chain of failures, quick enough to watch in one go. */
@@ -77,11 +79,20 @@ export class PracticeDriver implements Driver {
   /** Called after each watch, used by fast-forward and scripted demos. */
   onWatch: ((view: View) => void) | null = null;
 
-  constructor(private engine: Engine, seed: number, opts: { scripted?: boolean; preRoll?: number } = {}) {
-    this.view = engine.call<View>({ op: "new", seed, watch_ms: NORMAL_WATCH_MS });
+  constructor(private engine: Engine, seed: number, opts: { scripted?: boolean; preRoll?: number; saved?: string } = {}) {
     if (opts.scripted) this.script = seed;
+    if (opts.saved) {
+      this.view = engine.call<View>({ op: "load", data: opts.saved });
+      return;
+    }
+    this.view = engine.call<View>({ op: "new", seed, watch_ms: NORMAL_WATCH_MS });
     const roll = opts.preRoll ?? 10;
     for (let i = 0; i < roll; i++) this.advance(false);
+  }
+
+  /** The whole harbor as text, to carry on later from where the player left off. */
+  save() {
+    return this.engine.call<{ data: string }>({ op: "save" }).data;
   }
 
   private entropy(): number[] {

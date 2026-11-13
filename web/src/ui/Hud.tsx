@@ -8,7 +8,7 @@ import type { House, Position, View } from "../types";
 import { crowns } from "../words";
 import { AWNINGS, Character, Coin, Pip, ShopIcon, Star, YOUR_AWNING } from "./art";
 
-function useCounting(value: number) {
+export function useCounting(value: number) {
   const [shown, setShown] = useState(value);
   const from = useRef(value);
   useEffect(() => {

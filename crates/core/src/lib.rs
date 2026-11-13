@@ -15,6 +15,7 @@ pub mod engine;
 pub mod rng;
 pub mod roster;
 pub mod rules;
+pub mod town;
 pub mod view;
 pub mod world;
 

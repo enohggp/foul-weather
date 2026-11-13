@@ -2,16 +2,19 @@
 
 import { useEffect, useRef, useState } from "react";
 import { shopName } from "../cast";
+import { clearTownSave, readTownSave } from "../progress";
 import { runTour } from "../tour";
 import type { House, View } from "../types";
-import { crowns, pct, titleFor } from "../words";
-import { Character, Coin, Pip, ShopIcon, Star } from "./art";
+import { forgetWallet } from "../wallet";
+import { crowns, pct, shortAccount, titleFor } from "../words";
+import { Coin, Pip, ShopIcon } from "./art";
 import { LineChart } from "./bits";
 import { shopColour, SoundButtons } from "./Hud";
 import { TitleSea } from "./Theatre";
+import { BuildingArt, ChestArt, ShipArt } from "./townArt";
 
 export interface TitleChoice {
-  mode: "practice" | "live" | "login";
+  mode: "town" | "live" | "login" | "wallet" | "classic" | "classic-live";
   name: string;
 }
 
@@ -20,6 +23,7 @@ export function Title({
   ready,
   liveReady,
   loginReady,
+  walletName,
   error,
   working,
 }: {
@@ -27,9 +31,12 @@ export function Title({
   ready: boolean;
   liveReady: boolean;
   loginReady: boolean;
+  /** The NEAR account this device last played with, if a wallet is connected. */
+  walletName: string | null;
   error: string | null;
   working: string | null;
 }) {
+  const [wallet, setWallet] = useState(walletName);
   const [name, setName] = useState(() => {
     try {
       return localStorage.getItem("fw-house") ?? "";
@@ -37,10 +44,12 @@ export function Title({
       return "";
     }
   });
+  const [saved, setSaved] = useState(() => readTownSave()?.name ?? null);
+  const [sure, setSure] = useState(false);
   const input = useRef<HTMLInputElement>(null);
-  useEffect(() => input.current?.focus(), []);
+  useEffect(() => input.current?.focus(), [saved]);
   const go = (mode: TitleChoice["mode"]) => {
-    const chosen = name.trim().length >= 2 ? name.trim() : "My Harbor Shop";
+    const chosen = name.trim().length >= 2 ? name.trim() : "My Harbor Town";
     try {
       localStorage.setItem("fw-house", name.trim());
     } catch {
@@ -57,45 +66,51 @@ export function Title({
       <div className="title-card">
         <div className="title-pip">
           <Pip size={116} />
-          <p className="bubble">Ahoy! Ready to run your own harbor shop?</p>
+          <p className="bubble">{saved ? `Welcome back to ${saved}!` : "Ahoy! Ready to build your own town?"}</p>
         </div>
         <h1>Foul Weather</h1>
         <ol className="steps">
           <li>
-            <Character id={0} size={58} />
-            <span>Captains ask you to protect their ships</span>
+            <span className="step-icon">
+              <ShipArt cls={1} size={58} />
+            </span>
+            <span>Send your ships out to sea</span>
           </li>
           <li>
             <span className="step-icon">
-              <Coin size={44} />
+              <ChestArt size={50} />
             </span>
-            <span>They pay you coins</span>
+            <span>Come home in time, or risk it for treasure</span>
           </li>
           <li>
             <span className="step-icon">
-              <Star size={46} />
+              <BuildingArt kind={3} size={54} />
             </span>
-            <span>Bring ships home and grow your harbor</span>
+            <span>Build the best town on the sea</span>
           </li>
         </ol>
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            go("practice");
+            go("town");
           }}
         >
-          <label htmlFor="house">Name your shop</label>
-          <input
-            id="house"
-            ref={input}
-            value={name}
-            maxLength={32}
-            placeholder="My Harbor Shop"
-            onChange={(e) => setName(e.target.value)}
-            autoComplete="off"
-          />
+          {!saved && (
+            <>
+              <label htmlFor="house">Name your town</label>
+              <input
+                id="house"
+                ref={input}
+                value={name}
+                maxLength={32}
+                placeholder="My Harbor Town"
+                onChange={(e) => setName(e.target.value)}
+                autoComplete="off"
+              />
+            </>
+          )}
           <button className="big-button" type="submit" disabled={!ready || !!working}>
-            Play!
+            {saved ? "Carry on!" : "Play!"}
           </button>
           <div className="title-more">
             <button className="soft-button" type="button" disabled={!ready || !liveReady || !!working} onClick={() => go("live")}>
@@ -107,13 +122,58 @@ export function Title({
           </div>
           {loginReady && (
             <button className="text-link" type="button" disabled={!ready || !!working} onClick={() => go("login")}>
-              Sign in with Google or email to save your shop
+              Sign in with Google or email to keep your online town
             </button>
           )}
+          <div className="title-wallet">
+            <button
+              className="text-link"
+              type="button"
+              disabled={!ready || !liveReady || !!working}
+              onClick={() => go("wallet")}
+            >
+              {wallet ? `Play online as ${shortAccount(wallet)}` : "Connect your NEAR wallet (testnet)"}
+            </button>
+            {wallet && (
+              <button
+                className="text-link"
+                type="button"
+                disabled={!!working}
+                onClick={() => {
+                  forgetWallet();
+                  setWallet(null);
+                }}
+              >
+                Disconnect
+              </button>
+            )}
+          </div>
+          <div className="title-links">
+            {saved && (
+              <button
+                className="text-link"
+                type="button"
+                onClick={() => {
+                  if (!sure) {
+                    setSure(true);
+                    return;
+                  }
+                  clearTownSave();
+                  setSaved(null);
+                  setSure(false);
+                }}
+              >
+                {sure ? "Tap again to start over" : "Start a new town"}
+              </button>
+            )}
+            <button className="text-link" type="button" disabled={!ready || !!working} onClick={() => go("classic")}>
+              More ways to play
+            </button>
+          </div>
         </form>
         {working && <p className="working">{working}</p>}
         {error && <p className="problem">{error}</p>}
-        <p className="fine">No wallet, no sign-up and no real money. Coins are just for fun.</p>
+        <p className="fine">The game uses no NEAR tokens and no real money. Coins are just for fun.</p>
       </div>
     </main>
   );

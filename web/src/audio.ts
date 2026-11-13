@@ -238,6 +238,22 @@ export function coins() {
   });
 }
 
+/** A little blip each time a ship's cargo grows. It climbs as the ship nears the island. */
+export function tick(progress: number) {
+  const c = ctx();
+  if (!c) return;
+  const osc = c.createOscillator();
+  const gain = c.createGain();
+  const at = c.currentTime;
+  osc.type = "triangle";
+  osc.frequency.setValueAtTime(560 + 760 * Math.min(1, Math.max(0, progress)), at);
+  gain.gain.setValueAtTime(0.07, at);
+  gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.13);
+  osc.connect(gain).connect(effects!);
+  osc.start(at);
+  osc.stop(at + 0.15);
+}
+
 export function thunder() {
   const c = ctx();
   if (!c) return;

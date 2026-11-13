@@ -35,6 +35,41 @@ export function saveProgress(p: Progress) {
   }
 }
 
+// ---- A saved town ---------------------------------------------------------------
+
+const TOWN_KEY = "fw-town-save";
+
+export interface TownSave {
+  name: string;
+  /** The whole practice harbor, written out by the engine. */
+  data: string;
+}
+
+export function readTownSave(): TownSave | null {
+  try {
+    const raw = localStorage.getItem(TOWN_KEY);
+    return raw ? (JSON.parse(raw) as TownSave) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeTownSave(save: TownSave) {
+  try {
+    localStorage.setItem(TOWN_KEY, JSON.stringify(save));
+  } catch {
+    // A private window may refuse storage. The town then lasts as long as the tab.
+  }
+}
+
+export function clearTownSave() {
+  try {
+    localStorage.removeItem(TOWN_KEY);
+  } catch {
+    // Nothing was saved, then.
+  }
+}
+
 /** XP needed to finish a level. */
 const toNext = (level: number) => 60 + level * 60;
 

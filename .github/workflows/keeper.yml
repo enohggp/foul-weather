@@ -1,11 +1,11 @@
-# Optional. Keeps the live world moving and posts sea reports while no one plays.
-# Add a repository secret NEAR_PRIVATE_KEY holding the contract account's key.
-# Testnet only. Players' browsers tick the world themselves, so this can be off.
+# Optional, and off unless started by hand from the Actions tab. Keeps the live world moving
+# and posts sea reports while no one plays. Every watch costs the contract testnet NEAR, so
+# only run it when the contract has spare balance.
+# Needs a repository secret NEAR_PRIVATE_KEY holding the contract account's key.
+# Players' browsers tick the world themselves, so this can stay off.
 name: Keeper
 
 on:
-  schedule:
-    - cron: "*/20 * * * *"
   workflow_dispatch:
 
 jobs:

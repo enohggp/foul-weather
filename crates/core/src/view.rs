@@ -4,6 +4,7 @@
 use crate::engine::{lane_of_port, trip_goods};
 use crate::roster::CAPTAINS;
 use crate::rules::{self, GOOD_COUNT, HUB, LANES, LANE_COUNT, PORTS, PORT_COUNT};
+use crate::town::SurpriseKind;
 use crate::world::*;
 use serde::Serialize;
 
@@ -34,6 +35,175 @@ pub struct WorldView {
     pub fees: FeesView,
     /// The ship this viewer is steering, if they are a captain.
     pub helm: Option<HelmView>,
+    /// The viewer's own town, if they have one.
+    pub town: Option<TownView>,
+    /// Every town, best first.
+    pub towns: Vec<TownRow>,
+    /// Every town's ship at sea, for the map.
+    pub fleet: Vec<FleetShip>,
+    pub catalog: Catalog,
+    /// The latest harbor talk, oldest first.
+    pub chat: Vec<ChatView>,
+}
+
+#[derive(Serialize)]
+pub struct ChatView {
+    pub id: u32,
+    pub watch: u32,
+    pub town: u16,
+    pub name: String,
+    pub bot: bool,
+    pub you: bool,
+    pub text: String,
+    /// True when these are the player's own words, not one of the set phrases.
+    pub typed: bool,
+    pub to: Option<u16>,
+    pub to_name: Option<String>,
+    pub to_you: bool,
+}
+
+#[derive(Serialize)]
+pub struct TownTripView {
+    pub lane: u8,
+    pub to: u8,
+    pub sailed: u32,
+    pub arrives: u32,
+    pub full: u64,
+    /// What coming home right now would bank.
+    pub now: u64,
+    pub cover: u64,
+    /// The chance of being lost in the coming watch.
+    pub danger_bps: u64,
+    /// The waves on this route right now, from 0 to 100.
+    pub swell: u8,
+    /// Watches until a storm reaches this route, if one is forecast.
+    pub storm_in: Option<u32>,
+    pub surprise: Option<SurpriseKind>,
+    pub surprise_answered: bool,
+    /// Another real player sailing this route, which makes it safer.
+    pub convoy: Option<String>,
+    /// Whose pirates are on their way to this ship.
+    pub raid_from: Option<String>,
+    /// Who pays out if this ship is lost.
+    pub insurer: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct ShipView {
+    pub id: u32,
+    pub token: String,
+    pub class: u8,
+    pub name: &'static str,
+    pub cargo_units: u64,
+    pub hull: u8,
+    pub levels: [u8; 3],
+    pub damaged: bool,
+    pub ready_in: u32,
+    pub repair_cost: u64,
+    /// What the next level of cargo, hull and sails would cost.
+    pub upgrade_costs: [u64; 3],
+    pub trip: Option<TownTripView>,
+    /// The worth of each route for this ship, and its chance of being lost.
+    pub routes: Vec<RouteView>,
+}
+
+#[derive(Serialize)]
+pub struct RouteView {
+    pub lane: u8,
+    pub to: u8,
+    pub good_name: &'static str,
+    pub full: u64,
+    /// What the cargo costs up front.
+    pub cost: u64,
+    pub market_pct: u64,
+    pub risk_bps: u64,
+    pub storm: bool,
+    pub watches: u32,
+    pub locked_until: u32,
+    pub protect_fee: Option<u64>,
+    pub cover: u64,
+    /// Another real player already sailing this route.
+    pub convoy: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct TownView {
+    pub id: u16,
+    pub name: String,
+    pub coins: u64,
+    pub level: u32,
+    pub xp_into: u32,
+    pub xp_need: u32,
+    pub streak: u16,
+    pub streak_bonus: u64,
+    pub best_streak: u16,
+    pub ships: Vec<ShipView>,
+    pub buildings: Vec<u8>,
+    pub building_costs: Vec<u64>,
+    pub crew: Vec<u8>,
+    pub crew_costs: Vec<u64>,
+    pub crew_room: u32,
+    pub ship_room: usize,
+    pub income: u64,
+    pub waiting: u64,
+    pub store: u64,
+    pub net_worth: u64,
+    pub earned: u64,
+    pub wrecks: u32,
+    pub raid_in: u32,
+    pub help_in: u32,
+    pub gift_in: u32,
+    /// What helping a town would pay each side, at your level.
+    pub help_coins: u64,
+}
+
+#[derive(Serialize)]
+pub struct TownRow {
+    pub id: u16,
+    pub name: String,
+    pub bot: bool,
+    pub you: bool,
+    pub level: u32,
+    pub net_worth: u64,
+    pub ships: u8,
+    /// A real player who has done something in the last little while.
+    pub online: bool,
+    pub buildings: Vec<u8>,
+}
+
+#[derive(Serialize)]
+pub struct FleetShip {
+    pub town: u16,
+    pub town_name: String,
+    pub mine: bool,
+    pub bot: bool,
+    pub ship: u32,
+    pub class: u8,
+    pub lane: u8,
+    pub sailed: u32,
+    pub arrives: u32,
+    pub raided: bool,
+}
+
+#[derive(Serialize)]
+pub struct CatalogItem {
+    pub name: &'static str,
+    pub cost: u64,
+    pub level: u32,
+    pub income: u64,
+    pub max: u8,
+    pub cargo: u32,
+    pub hull: u8,
+}
+
+#[derive(Serialize)]
+pub struct Catalog {
+    pub ships: Vec<CatalogItem>,
+    pub buildings: Vec<CatalogItem>,
+    pub crew: Vec<CatalogItem>,
+    pub raid_cost: u64,
+    pub gift_max: u64,
+    pub phrases: Vec<&'static str>,
 }
 
 /// One trip the person at the wheel could make from here.
@@ -85,6 +255,8 @@ pub struct LaneView {
     pub live_report: bool,
     pub danger_bps: u64,
     pub watches: u32,
+    /// The waves right now, from 0 to 100. Towns' ships have to read these.
+    pub swell: u8,
 }
 
 #[derive(Serialize)]
@@ -345,6 +517,128 @@ impl World {
         (lowest * 112 / 100).clamp(100, 4_000) as u16
     }
 
+    fn ship_view(&self, t: usize, s: usize) -> ShipView {
+        let ship = &self.towns[t].ships[s];
+        let class = usize::from(ship.class);
+        let level = self.town_level(t);
+        let routes = (0..LANE_COUNT)
+            .map(|lane| {
+                let good = PORTS[LANES[lane].port].makes;
+                let full = self.trip_full(t, s, lane);
+                let risk_bps = self.trip_risk_bps(t, s, lane);
+                let cover = rules::of_bps(full, rules::TRIP_COVER_BPS);
+                RouteView {
+                    lane: lane as u8,
+                    to: LANES[lane].port as u8,
+                    good_name: rules::GOODS[good].name,
+                    full,
+                    cost: full * rules::CARGO_COST_PCT / 100,
+                    market_pct: self.market_pct(lane),
+                    risk_bps,
+                    storm: self.storm_near(lane, self.ship_watches(t, s, lane) + 1).is_some(),
+                    watches: self.ship_watches(t, s, lane),
+                    locked_until: if rules::ROUTE_LEVEL[lane] > level { rules::ROUTE_LEVEL[lane] } else { 0 },
+                    protect_fee: self.best_cover(t, risk_bps, cover).map(|(_, fee)| fee),
+                    cover,
+                    convoy: self.convoy_of(t, lane).map(|other| self.towns[other].name.clone()),
+                }
+            })
+            .collect();
+        let trip = ship.trip.as_ref().map(|trip| {
+            let lane = usize::from(trip.lane);
+            TownTripView {
+                lane: trip.lane,
+                to: LANES[lane].port as u8,
+                sailed: trip.sailed,
+                arrives: trip.arrives,
+                full: trip.full,
+                now: rules::trip_value_now(trip.full, self.watch.saturating_sub(trip.sailed), trip.arrives - trip.sailed),
+                cover: trip.cover,
+                danger_bps: self.hazard_now(t, s, trip),
+                swell: self.swells[lane],
+                storm_in: self
+                    .storms
+                    .iter()
+                    .filter(|st| st.covers(lane) && st.ends > self.watch && st.starts < trip.arrives)
+                    .map(|st| st.starts.saturating_sub(self.watch))
+                    .min(),
+                surprise: trip.surprise.as_ref().map(|x| x.kind),
+                surprise_answered: trip.surprise.as_ref().is_some_and(|x| x.answer.is_some()),
+                convoy: self.convoy_of(t, lane).map(|other| self.towns[other].name.clone()),
+                raid_from: trip.raid_by.map(|by| self.towns[usize::from(by)].name.clone()),
+                insurer: trip.insurer.map(|h| self.houses[usize::from(h)].name.clone()),
+            }
+        });
+        ShipView {
+            id: ship.id,
+            token: self.ledger.token_name(ship.token).to_string(),
+            class: ship.class,
+            name: rules::SHIP_CLASSES[class].name,
+            cargo_units: self.ship_cargo(t, s),
+            hull: self.ship_hull(t, s),
+            levels: [ship.cargo, ship.hull, ship.sails],
+            damaged: ship.damaged,
+            ready_in: ship.ready_at.saturating_sub(self.watch),
+            repair_cost: rules::repair_cost(class),
+            upgrade_costs: [
+                rules::upgrade_cost(class, ship.cargo),
+                rules::upgrade_cost(class, ship.hull),
+                rules::upgrade_cost(class, ship.sails),
+            ],
+            trip,
+            routes,
+        }
+    }
+
+    fn town_view(&self, t: usize) -> TownView {
+        let town = &self.towns[t];
+        let (level, xp_into, xp_need) = rules::level_of(town.xp);
+        let income = self.town_income_rate(t);
+        TownView {
+            id: t as u16,
+            name: town.name.clone(),
+            coins: self.cash(town.acct),
+            level,
+            xp_into,
+            xp_need,
+            streak: town.streak,
+            streak_bonus: rules::streak_bonus_pct(town.streak),
+            best_streak: town.best_streak,
+            ships: (0..town.ships.len()).map(|s| self.ship_view(t, s)).collect(),
+            buildings: town.buildings.to_vec(),
+            building_costs: (0..rules::BUILDING_KINDS).map(|k| rules::building_cost(k, town.buildings[k])).collect(),
+            crew: town.crew.to_vec(),
+            crew_costs: (0..rules::CREW_KINDS).map(|k| rules::crew_cost(k, town.crew[k])).collect(),
+            crew_room: rules::crew_slots(town.buildings[rules::BUILD_TAVERN]),
+            ship_room: rules::ship_slots(town.buildings[rules::BUILD_DOCK]),
+            income,
+            waiting: self.town_waiting(t),
+            store: income * rules::INCOME_STORE_WATCHES * (100 + u64::from(town.buildings[rules::BUILD_WAREHOUSE]) * 50) / 100,
+            net_worth: self.net_worth(t),
+            earned: town.earned,
+            wrecks: town.wrecks,
+            raid_in: town.raid_ready.saturating_sub(self.watch),
+            help_in: town.help_ready.saturating_sub(self.watch),
+            gift_in: town.gift_ready.saturating_sub(self.watch),
+            help_coins: rules::help_coins(level),
+        }
+    }
+
+    fn catalog(&self) -> Catalog {
+        let empty = |name, cost, level, income, max| CatalogItem { name, cost, level, income, max, cargo: 0, hull: 0 };
+        Catalog {
+            ships: rules::SHIP_CLASSES
+                .iter()
+                .map(|c| CatalogItem { name: c.name, cost: c.cost, level: c.level, income: 0, max: 0, cargo: c.cargo, hull: c.hull })
+                .collect(),
+            buildings: rules::BUILDINGS.iter().map(|b| empty(b.name, b.cost, b.level, b.income, b.max)).collect(),
+            crew: rules::CREW.iter().map(|c| empty(c.name, c.cost, c.level, 0, c.max)).collect(),
+            raid_cost: rules::RAID_COST,
+            gift_max: rules::GIFT_MAX,
+            phrases: rules::CHAT_PHRASES.to_vec(),
+        }
+    }
+
     /// The choices open to the person at the wheel of captain `c`.
     fn helm_view(&self, c: usize) -> Option<HelmView> {
         let captain = &self.captains[c];
@@ -422,8 +716,53 @@ impl World {
 
     /// Builds the page's picture of the world, as seen by `viewer`.
     pub fn view(&self, viewer: Option<&str>) -> WorldView {
+        self.view_at(viewer, None)
+    }
+
+    /// The same picture, with who's online judged by a real clock, in seconds.
+    pub fn view_at(&self, viewer: Option<&str>, now_s: Option<u32>) -> WorldView {
         let you = viewer.and_then(|v| self.house_of(v));
         let helm = viewer.and_then(|v| self.helm_of(v)).and_then(|c| self.helm_view(c));
+        let mine = viewer.and_then(|v| self.town_of(v));
+        let town = mine.map(|t| self.town_view(t));
+        let mut towns: Vec<TownRow> = self
+            .towns
+            .iter()
+            .enumerate()
+            .map(|(t, row)| TownRow {
+                id: t as u16,
+                name: row.name.clone(),
+                bot: row.bot,
+                you: mine == Some(t),
+                level: self.town_level(t),
+                net_worth: self.net_worth(t),
+                ships: row.ships.len() as u8,
+                online: self.is_online(t, now_s),
+                buildings: row.buildings.to_vec(),
+            })
+            .collect();
+        towns.sort_by_key(|row| std::cmp::Reverse(row.net_worth));
+        let fleet = self
+            .towns
+            .iter()
+            .enumerate()
+            .flat_map(|(t, row)| {
+                row.ships.iter().filter_map(move |ship| {
+                    ship.trip.as_ref().map(|trip| FleetShip {
+                        town: t as u16,
+                        town_name: row.name.clone(),
+                        mine: mine == Some(t),
+                        bot: row.bot,
+                        ship: ship.id,
+                        class: ship.class,
+                        lane: trip.lane,
+                        sailed: trip.sailed,
+                        arrives: trip.arrives,
+                        raided: trip.raided || trip.raid_by.is_some(),
+                    })
+                })
+            })
+            .collect();
 
         let lanes = (0..LANE_COUNT)
             .map(|i| {
@@ -438,6 +777,7 @@ impl World {
                     live_report: fresh,
                     danger_bps: LANES[i].danger_bps,
                     watches: LANES[i].watches,
+                    swell: self.swells[i],
                 }
             })
             .collect();
@@ -714,6 +1054,30 @@ impl World {
                 max_gearing: rules::MAX_GEARING,
             },
             helm,
+            town,
+            towns,
+            fleet,
+            catalog: self.catalog(),
+            chat: self
+                .chat
+                .iter()
+                .map(|line| {
+                    let town = &self.towns[usize::from(line.town)];
+                    ChatView {
+                        id: line.id,
+                        watch: line.watch,
+                        town: line.town,
+                        name: town.name.clone(),
+                        bot: town.bot,
+                        you: mine == Some(usize::from(line.town)),
+                        text: line.typed.clone().unwrap_or_else(|| rules::CHAT_PHRASES[usize::from(line.phrase)].to_string()),
+                        typed: line.typed.is_some(),
+                        to: line.to,
+                        to_name: line.to.map(|other| self.towns[usize::from(other)].name.clone()),
+                        to_you: line.to.is_some() && line.to.map(usize::from) == mine,
+                    }
+                })
+                .collect(),
         }
     }
 }

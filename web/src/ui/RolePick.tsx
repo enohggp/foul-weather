@@ -15,9 +15,11 @@ interface Props {
   error: string | null;
   onPick: (role: Role) => void;
   onBack: () => void;
+  /** Offered in a practice harbor: play these same roles online instead. */
+  onLive?: () => void;
 }
 
-export default function RolePick({ view, live, working, error, onPick, onBack }: Props) {
+export default function RolePick({ view, live, working, error, onPick, onBack, onLive }: Props) {
   const [choosingShip, setChoosingShip] = useState(false);
   const realCaptains = view?.captains.filter((c) => c.player).length ?? 0;
   const realShops = view?.houses.filter((h) => h.kind === "player" && h.active).length ?? 0;
@@ -83,6 +85,11 @@ export default function RolePick({ view, live, working, error, onPick, onBack }:
         )}
         {working && <p className="working">{working}</p>}
         {error && <p className="problem">{error}</p>}
+        {onLive && !choosingShip && (
+          <button className="text-link" disabled={!!working} onClick={onLive}>
+            Play these online, with real people
+          </button>
+        )}
         <button className="text-link back-link" disabled={!!working} onClick={() => (choosingShip ? setChoosingShip(false) : onBack())}>
           Back
         </button>

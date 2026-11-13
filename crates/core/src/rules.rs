@@ -124,7 +124,7 @@ pub fn port_stock_rule(port: usize, good: usize) -> (u32, i32) {
 }
 
 /// A port pays more when it is short and less when it is flooded:
-/// `base Ã— target / stock`, held between 0.4Ã— and 3.5Ã— the usual price.
+/// `base Ãƒâ€” target / stock`, held between 0.4Ãƒâ€” and 3.5Ãƒâ€” the usual price.
 pub fn port_price(good: usize, stock: u64, target: u64) -> u64 {
     let base = GOODS[good].base_price;
     let price = base * target / stock.max(1);
@@ -395,6 +395,340 @@ pub const BOND_SHARE_PCT: u64 = 25;
 pub const BOND_RETURN_PCT: u64 = 135;
 /// The Room quietly refits a captain left idle this long.
 pub const ROOM_REFITS_AFTER: u32 = 24;
+
+// ---- Your own town -----------------------------------------------------------------
+
+pub const TOWN_START_COINS: u64 = 150;
+pub const MAX_PLAYER_TOWNS: usize = 40;
+pub const RIVAL_TOWNS: [&str; 5] = ["Magpie Bay", "Badger Cove", "Seagull Point", "Heron Harbor", "Lizard Lagoon"];
+
+pub struct ShipClass {
+    pub name: &'static str,
+    pub cost: u64,
+    pub level: u32,
+    pub cargo: u32,
+    pub hull: u8,
+}
+
+pub const SHIP_CLASSES: [ShipClass; 4] = [
+    ShipClass { name: "Rowboat", cost: 150, level: 1, cargo: 10, hull: 55 },
+    ShipClass { name: "Sloop", cost: 600, level: 2, cargo: 24, hull: 65 },
+    ShipClass { name: "Brig", cost: 3_000, level: 4, cargo: 55, hull: 75 },
+    ShipClass { name: "Galleon", cost: 12_000, level: 7, cargo: 130, hull: 85 },
+];
+
+/// Coins one unit of cargo fetches on each route. The further out, the more it pays.
+pub const ROUTE_PAY: [u64; LANE_COUNT] = [5, 7, 10, 13, 17];
+/// The level each route opens at.
+pub const ROUTE_LEVEL: [u32; LANE_COUNT] = [1, 1, 2, 3, 5];
+pub const SHORTEST_TRIP: u32 = 3;
+
+pub const CARGO_PCT_PER_LEVEL: u64 = 25;
+pub const HULL_PER_LEVEL: u64 = 7;
+
+pub const fn upgrade_max(part: u8) -> u8 {
+    if part == 2 {
+        2
+    } else {
+        3
+    }
+}
+
+pub fn upgrade_cost(class: usize, level: u8) -> u64 {
+    (SHIP_CLASSES[class].cost / 3).max(60) * (u64::from(level) + 1)
+}
+
+/// A wrecked ship mends itself in time, or you can pay to fix it now.
+pub const REPAIR_WATCHES: u32 = 9;
+
+pub fn repair_cost(class: usize) -> u64 {
+    (SHIP_CLASSES[class].cost / 6).max(25)
+}
+
+/// How much more dangerous a town's trips are than a Room captain's crossing.
+pub const TRIP_DANGER_PCT: u64 = 220;
+pub const TRIP_STORM_PCT: u64 = 250;
+/// Cargo is bought up front, as a share of what it will fetch. That is what you risk.
+pub const CARGO_COST_PCT: u64 = 30;
+/// A captain with no coins can still sail with a part-load, so nobody is ever stuck.
+pub const MIN_LOAD_PCT: u64 = 25;
+/// The water a ship is sailing through, with the sea state a Room captain would see.
+const CALM_SEA: u8 = 30;
+/// What an insurer pays out on a lost trip, as a share of its full value.
+pub const TRIP_COVER_BPS: u64 = 8_000;
+
+/// The chance of being lost in one watch. The further out, the worse the water.
+pub fn trip_hazard_bps(lane: usize, swell: u8, hull: u8, done_pct: u64, watches: u32, storm_bps: u64) -> u64 {
+    let crossing = voyage_risk_bps(lane, CALM_SEA, hull) * TRIP_DANGER_PCT / 100;
+    let each = crossing / u64::from(watches.max(1));
+    let water = each * (50 + done_pct.min(100) * 3 / 2) / 100 * swell_danger_pct(swell) / 100;
+    water + storm_hazard_bps(storm_bps, hull) * TRIP_STORM_PCT / 100
+}
+
+/// The waves on a route rise and fall from watch to watch. Calm water is nearly
+/// safe. Wild water is deadly. Reading it is the skill of the game.
+pub fn swell_danger_pct(swell: u8) -> u64 {
+    match swell {
+        0..=29 => 30,
+        30..=54 => 80,
+        55..=74 => 250,
+        _ => 1_800,
+    }
+}
+
+/// The next state of the waves: drawn back to a level set by the real sea report,
+/// with some noise and an occasional sudden gust.
+pub fn next_swell(swell: u8, sea: u8, roll: u64) -> u8 {
+    let target = 22 + i64::from(sea) / 3;
+    let noise = (roll % 33) as i64 - 16;
+    let gust = if (roll / 33) % 6 == 0 { 36 } else { 0 };
+    let now = i64::from(swell);
+    (now + (target - now) / 3 + noise + gust).clamp(0, 100) as u8
+}
+
+/// What a cargo is worth if you bring it home now: over half of it halfway, all of it at the end.
+pub fn trip_value_now(full: u64, sailed_for: u32, watches: u32) -> u64 {
+    const CURVE: [u64; 11] = [20, 26, 33, 41, 49, 57, 65, 73, 82, 91, 100];
+    let done = u64::from(sailed_for.min(watches)) * 100 / u64::from(watches.max(1));
+    let step = (done / 10).min(9) as usize;
+    let pct = CURVE[step] + (CURVE[step + 1] - CURVE[step]) * (done - step as u64 * 10) / 10;
+    full * pct / 100
+}
+
+/// The treasure chest at the end of a trip: usually nothing extra, now and then a lot.
+pub fn chest_pct(roll_0_to_99: u64) -> u64 {
+    match roll_0_to_99 {
+        0 => 500,
+        1..=3 => 300,
+        4..=13 => 200,
+        14..=33 => 150,
+        _ => 100,
+    }
+}
+
+/// Safe arrivals in a row pay more, until a ship is lost.
+pub fn streak_bonus_pct(streak: u16) -> u64 {
+    (u64::from(streak) * 5).min(50)
+}
+
+pub const SURPRISE_BPS: u64 = 1_500;
+pub const SURPRISE_WATCHES: u32 = 2;
+pub const PIRATE_SINK_PCT: u64 = 35;
+pub const PIRATE_TOLL_PCT: u64 = 15;
+
+pub const RAID_COST: u64 = 40;
+pub const RAID_REST_WATCHES: u32 = 8;
+/// A raid lands this many watches after it is launched, so the target can run for it.
+pub const RAID_WARNING_WATCHES: u32 = 2;
+pub const RAID_TAKES_PCT: u64 = 25;
+
+pub fn raid_chance_pct(attacker_crew: u64, victim_lookouts: u64) -> u64 {
+    (55 + attacker_crew * 4).saturating_sub(victim_lookouts * 15).clamp(15, 85)
+}
+
+pub struct Building {
+    pub name: &'static str,
+    pub cost: u64,
+    pub level: u32,
+    /// Coins it makes each watch.
+    pub income: u64,
+    pub max: u8,
+}
+
+pub const BUILDING_KINDS: usize = 12;
+/// The first buildings in the list earn money. The rest do something else.
+pub const INCOME_KINDS: usize = 5;
+pub const BUILD_DOCK: usize = 5;
+pub const BUILD_TAVERN: usize = 6;
+pub const BUILD_WAREHOUSE: usize = 7;
+pub const BUILD_LIGHTHOUSE: usize = 8;
+pub const BUILD_SHIPYARD: usize = 9;
+pub const BUILD_OFFICE: usize = 10;
+pub const BUILD_COVE: usize = 11;
+
+pub const BUILDINGS: [Building; BUILDING_KINDS] = [
+    Building { name: "Cottage", cost: 100, level: 1, income: 1, max: 5 },
+    Building { name: "Fish Stall", cost: 350, level: 2, income: 3, max: 3 },
+    Building { name: "Bakery", cost: 900, level: 3, income: 8, max: 2 },
+    Building { name: "Inn", cost: 2_500, level: 5, income: 22, max: 2 },
+    Building { name: "Market Hall", cost: 7_000, level: 8, income: 60, max: 1 },
+    Building { name: "Dock", cost: 250, level: 1, income: 0, max: 3 },
+    Building { name: "Tavern", cost: 300, level: 2, income: 0, max: 2 },
+    Building { name: "Warehouse", cost: 500, level: 3, income: 0, max: 2 },
+    Building { name: "Lighthouse", cost: 800, level: 3, income: 0, max: 1 },
+    Building { name: "Shipyard", cost: 1_000, level: 4, income: 0, max: 1 },
+    Building { name: "Insurance Office", cost: 900, level: 3, income: 0, max: 1 },
+    Building { name: "Pirate Cove", cost: 350, level: 2, income: 0, max: 1 },
+];
+
+/// Each extra one of a kind costs more.
+pub fn building_cost(kind: usize, owned: u8) -> u64 {
+    BUILDINGS[kind].cost * (100 + u64::from(owned) * 60) / 100
+}
+
+/// Watches of income a town stores before its buildings need collecting.
+pub const INCOME_STORE_WATCHES: u64 = 40;
+
+pub fn ship_slots(docks: u8) -> usize {
+    1 + usize::from(docks)
+}
+
+pub struct Crew {
+    pub name: &'static str,
+    pub cost: u64,
+    pub level: u32,
+    pub max: u8,
+}
+
+pub const CREW_KINDS: usize = 4;
+pub const CREW_DECKHAND: usize = 0;
+pub const CREW_LOOKOUT: usize = 1;
+pub const CREW_NAVIGATOR: usize = 2;
+pub const CREW_MERCHANT: usize = 3;
+
+pub const CREW: [Crew; CREW_KINDS] = [
+    Crew { name: "Deckhand", cost: 120, level: 1, max: 3 },
+    Crew { name: "Lookout", cost: 300, level: 2, max: 2 },
+    Crew { name: "Navigator", cost: 700, level: 3, max: 2 },
+    Crew { name: "Merchant", cost: 1_000, level: 4, max: 2 },
+];
+
+pub fn crew_cost(kind: usize, owned: u8) -> u64 {
+    CREW[kind].cost * (100 + u64::from(owned) * 75) / 100
+}
+
+pub fn crew_slots(taverns: u8) -> u32 {
+    2 + u32::from(taverns) * 2
+}
+
+/// XP from coins, by how they were won.
+pub const XP_PER_COIN_DELIVERED: u64 = 2;
+pub const XP_PER_COIN_BANKED: u64 = 6;
+pub const XP_PER_COIN_SPENT: u64 = 8;
+
+/// Returns the level, the XP earned into it, and the XP it takes to finish it.
+pub fn level_of(xp: u32) -> (u32, u32, u32) {
+    let (mut level, mut left) = (1, xp);
+    loop {
+        let need = 60 + level * level * level * 12;
+        if left < need {
+            return (level, left, need);
+        }
+        left -= need;
+        level += 1;
+    }
+}
+
+pub const FESTIVAL_PRIZES: [u64; 3] = [1_000, 500, 250];
+
+// ---- Playing together ------------------------------------------------------------
+
+/// What each side gets when one player helps another's town.
+pub fn help_coins(level: u32) -> u64 {
+    25 + u64::from(level) * 10
+}
+pub const HELP_XP: u64 = 15;
+pub const HELP_REST_WATCHES: u32 = 8;
+/// The most coins one gift can carry.
+pub const GIFT_MAX: u64 = 100;
+pub const GIFT_REST_WATCHES: u32 = 8;
+/// Danger, as a percentage of normal, while another real player sails your route.
+pub const CONVOY_DANGER_PCT: u64 = 65;
+/// How a real player's insurance is weighed against a shop run by the rules:
+/// their price is counted at this percentage when the cheapest is picked.
+pub const PLAYER_OFFICE_EDGE_PCT: u64 = 85;
+/// Anyone who has done something within this many watches counts as being around.
+pub const ONLINE_WATCHES: u32 = 12;
+/// The same idea on-chain, measured in real time. Game time stops when nobody is
+/// playing, so a count of watches would show people who left long ago as still here.
+pub const ONLINE_SECONDS: u32 = 180;
+/// How many lines of harbor talk are kept.
+pub const CHAT_KEEP: usize = 30;
+/// The most a town can say in one watch.
+pub const CHAT_PER_WATCH: u8 = 3;
+/// The longest message a player can type.
+pub const CHAT_MAX_CHARS: usize = 120;
+
+/// The commonest bad words, checked as whole words so that "Scunthorpe" is fine.
+const BAD_WORDS: [&str; 16] = [
+    "fuck", "fucking", "fucker", "shit", "bitch", "asshole", "bastard", "dick", "cunt", "nigger", "nigga", "faggot", "slut", "whore", "porn", "rape",
+];
+
+/// Typed words are public and stay on the chain for good, and children play this
+/// game. So links, contact details and the worst words are turned away. This is a
+/// first line of defence and not a guarantee, which is why players can also mute.
+pub fn check_words(text: &str) -> Result<String, &'static str> {
+    let text = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    if text.is_empty() {
+        return Err("type something first");
+    }
+    if text.chars().count() > CHAT_MAX_CHARS {
+        return Err("that message is too long");
+    }
+    if text.chars().any(char::is_control) {
+        return Err("that message has characters that can't be shown");
+    }
+    let lower = text.to_lowercase();
+    if ["http", "www.", "://", "@", ".com", ".net", ".org", ".io", "t.me", "discord.gg"].iter().any(|bad| lower.contains(bad)) {
+        return Err("links and email addresses can't be shared in chat");
+    }
+    let mut digits = 0;
+    for c in lower.chars() {
+        if c.is_ascii_digit() {
+            digits += 1;
+            if digits >= 7 {
+                return Err("phone numbers can't be shared in chat");
+            }
+        } else if !matches!(c, ' ' | '-' | '.' | '(' | ')' | '+') {
+            digits = 0;
+        }
+    }
+    if lower.split(|c: char| !c.is_alphanumeric()).any(|word| BAD_WORDS.contains(&word)) {
+        return Err("please keep it friendly");
+    }
+    Ok(text)
+}
+
+/// Lines anyone can send with one tap.
+pub const CHAT_PHRASES: [&str; 24] = [
+    "Ahoy!",
+    "Hello, neighbor!",
+    "Good luck out there!",
+    "Nice town!",
+    "Nice ship!",
+    "Well done!",
+    "Thank you!",
+    "You're welcome!",
+    "Sail with me!",
+    "Which island next?",
+    "Can you help me?",
+    "Sending you a gift!",
+    "Race you to the island!",
+    "I'm coming for first place!",
+    "Watch out for my pirates!",
+    "Hey! Give that back!",
+    "Big waves ahead!",
+    "Storm coming!",
+    "Come home, quick!",
+    "Treasure!",
+    "Oh no, I sank!",
+    "So close!",
+    "Ha ha!",
+    "See you at the Festival!",
+];
+/// What rival towns, run by the rules, like to say.
+pub const RIVAL_PHRASES: [u8; 12] = [0, 1, 2, 3, 4, 5, 12, 13, 16, 17, 22, 23];
+/// The chance each watch that a rival pipes up by itself, or answers a real player.
+pub const RIVAL_CHATTER_PCT: u64 = 4;
+pub const RIVAL_ANSWER_PCT: u64 = 60;
+/// How often a rival town goes shopping.
+pub const RIVAL_SHOP_EVERY: u32 = 12;
+/// The chance each watch that a rival town with a ship in port sends it out.
+pub const RIVAL_SAIL_PCT: u64 = 25;
+/// Rival towns are small places: they earn this share of what a player would.
+pub const RIVAL_PAY_PCT: u64 = 80;
+/// Cargo units that add one unit of stock in port when delivered.
+pub const CARGO_UNITS_PER_STOCK: u64 = 2;
 
 // ---- The reasons shown to players ---------------------------------------------------
 

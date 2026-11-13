@@ -13,6 +13,8 @@ export interface Moment {
   amount: number;
   /** The second line of the captain's bubble, when the player is the captain. */
   note?: string;
+  /** How long the scene runs, when it isn't the usual length. */
+  seconds?: number;
 }
 
 const SECONDS = { wreck: 6.5, home: 3.4 };
@@ -24,7 +26,7 @@ export function Theatre({ moment, onDone }: { moment: Moment; onDone: () => void
   useEffect(() => {
     const el = canvas.current!;
     const ctx = el.getContext("2d")!;
-    const length = SECONDS[moment.kind];
+    const length = moment.seconds ?? SECONDS[moment.kind];
     const [sail, stripe] = SAILS[moment.captain % SAILS.length];
     const begun = performance.now();
     let frame = 0;

@@ -4,6 +4,7 @@
 use crate::rules::{self, GOOD_COUNT, LANE_COUNT, PORT_COUNT};
 use crate::rng::Rng;
 use crate::roster::{CAPTAINS, CAPTAIN_COUNT};
+use crate::town::Town;
 use borsh::{BorshDeserialize, BorshSerialize};
 use nep245_ledger::{AccountIx, Ledger, TokenIx};
 use serde::{Deserialize, Serialize};
@@ -272,6 +273,22 @@ pub enum Event {
     SeasonEnd { season: u32 },
     HelmTaken { captain: u16 },
     HelmLeft { captain: u16 },
+    TripHome { town: u16, ship: u32, coins: u64, chest: u16, streak: u16 },
+    TripBack { town: u16, ship: u32, coins: u64 },
+    TripLost { town: u16, ship: u32, lane: u8, paid: u64 },
+    Raided { town: u16, ship: u32, by: u16, coins: u64 },
+    RaidFailed { town: u16, ship: u32, by: u16 },
+    PiratesWon { town: u16, ship: u32 },
+    PiratesBeaten { town: u16, ship: u32 },
+    FestivalPrize { town: u16, place: u8, coins: u64, season: u32 },
+    /// One real player helped another's town. Both got `coins`.
+    Helped { town: u16, by: u16, coins: u64 },
+    /// One real player sent another some of their coins.
+    Gift { town: u16, by: u16, coins: u64 },
+    /// A player's insurance office took on another player's trip.
+    TripCovered { town: u16, ship: u32, by: u16, fee: u64 },
+    /// A player's insurance office paid out for another player's lost ship.
+    CoverPaid { town: u16, to: u16, coins: u64 },
 }
 
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize)]
@@ -336,6 +353,14 @@ pub struct World {
     pub guild: AccountIx,
     pub crown: TokenIx,
     pub cargo: [TokenIx; GOOD_COUNT],
+    /// Players' own towns, and the rival towns run by the rules. They outlast seasons.
+    pub towns: Vec<Town>,
+    pub next_ship: u32,
+    /// The waves on each route, which towns' ships have to read.
+    pub swells: [u8; LANE_COUNT],
+    /// The latest harbor talk.
+    pub chat: Vec<crate::town::ChatLine>,
+    pub next_chat: u32,
 }
 
 impl World {
@@ -380,8 +405,14 @@ impl World {
             guild,
             crown,
             cargo,
+            towns: Vec::new(),
+            next_ship: 1,
+            swells: [35; LANE_COUNT],
+            chat: Vec::new(),
+            next_chat: 1,
         };
         world.seed_season();
+        world.seed_rival_towns();
         world
     }
 

@@ -25,7 +25,7 @@ const GAS_FOR_RESOLVE: Gas = Gas::from_tgas(20);
 const GAS_FOR_WATCHES: Gas = Gas::from_tgas(60);
 const MAX_RECEIVER_REPLY: usize = 4_096;
 /// Testnet NEAR given to a new player, enough for hundreds of moves.
-const GRANT: NearToken = NearToken::from_millinear(120);
+const GRANT: NearToken = NearToken::from_millinear(60);
 const ACCOUNTS_PER_HOUR: u32 = 40;
 const HOUR_MS: u64 = 3_600_000;
 
@@ -97,6 +97,10 @@ pub struct Contract {
     accounts_opened: u32,
     window_started_ms: u64,
     window_count: u32,
+}
+
+fn now_seconds() -> u32 {
+    (env::block_timestamp_ms() / 1_000) as u32
 }
 
 fn entropy() -> [u8; 32] {
@@ -239,6 +243,74 @@ impl Contract {
         self.act(Action::Scuttle)
     }
 
+    // ---- your own town ----------------------------------------------------
+
+    pub fn open_town(&mut self, name: String) -> Receipt {
+        self.act(Action::OpenTown { name })
+    }
+
+    /// Sends a ship to an island. Set `protect` to buy insurance for the trip.
+    pub fn send_ship(&mut self, ship: u32, lane: u8, protect: bool) -> Receipt {
+        self.act(Action::SendShip { ship, lane, protect })
+    }
+
+    /// Brings a ship home now, banking what its cargo has earned so far.
+    pub fn come_home(&mut self, ship: u32) -> Receipt {
+        self.act(Action::ComeHome { ship })
+    }
+
+    pub fn answer_surprise(&mut self, ship: u32, yes: bool) -> Receipt {
+        self.act(Action::AnswerSurprise { ship, yes })
+    }
+
+    pub fn collect_town(&mut self) -> Receipt {
+        self.act(Action::CollectTown)
+    }
+
+    pub fn build(&mut self, building: u8) -> Receipt {
+        self.act(Action::Build { building })
+    }
+
+    pub fn hire(&mut self, crew: u8) -> Receipt {
+        self.act(Action::Hire { crew })
+    }
+
+    pub fn buy_ship(&mut self, class: u8) -> Receipt {
+        self.act(Action::BuyShip { class })
+    }
+
+    pub fn upgrade_ship(&mut self, ship: u32, part: u8) -> Receipt {
+        self.act(Action::UpgradeShip { ship, part })
+    }
+
+    pub fn repair_ship(&mut self, ship: u32) -> Receipt {
+        self.act(Action::RepairShip { ship })
+    }
+
+    pub fn raid(&mut self, town: u16, ship: u32) -> Receipt {
+        self.act(Action::Raid { town, ship })
+    }
+
+    /// Helps a real player's town. You both get a few coins.
+    pub fn help_town(&mut self, town: u16) -> Receipt {
+        self.act(Action::HelpTown { town })
+    }
+
+    /// Sends some of your coins to a real player's town.
+    pub fn send_gift(&mut self, town: u16, coins: u64) -> Receipt {
+        self.act(Action::SendGift { town, coins })
+    }
+
+    /// Says one of the harbor's phrases, to everyone or to one town.
+    pub fn say(&mut self, phrase: u8, to: Option<u16>) -> Receipt {
+        self.act(Action::Say { phrase, to })
+    }
+
+    /// Says something in your own words, to everyone or to one town.
+    pub fn say_text(&mut self, text: String, to: Option<u16>) -> Receipt {
+        self.act(Action::SayText { text, to })
+    }
+
     // ---- the front door ----------------------------------------------------
 
     /// Opens a game account for a new player. Only the contract's own front-door
@@ -278,7 +350,9 @@ impl Contract {
             .transfer(GRANT)
             .add_access_key_allowance(
                 public_key,
-                Allowance::limited(GRANT).unwrap_or_else(|| env::panic_str("bad allowance")),
+                // The key can only call this contract and the account only holds the
+                // grant, so a spending limit on the key would just end games early.
+                Allowance::Unlimited,
                 env::current_account_id(),
                 String::new(),
             );
@@ -347,7 +421,7 @@ impl Contract {
 
     /// The whole harbor as seen by `viewer`. This is what the page renders.
     pub fn get_view(&self, viewer: Option<AccountId>) -> WorldView {
-        self.world.view(viewer.as_ref().map(|a| a.as_str()))
+        self.world.view_at(viewer.as_ref().map(|a| a.as_str()), Some(now_seconds()))
     }
 
     pub fn status(&self) -> Status {
@@ -543,6 +617,7 @@ impl Contract {
             .world
             .act(who.as_str(), action, &entropy())
             .unwrap_or_else(|e| env::panic_str(&e));
+        self.world.note_seen_at(who.as_str(), now_seconds());
         self.flush_logs();
         receipt
     }

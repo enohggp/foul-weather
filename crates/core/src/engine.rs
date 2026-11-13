@@ -50,6 +50,7 @@ impl World {
         self.weather(&mut r);
         self.ports_tick();
         self.sea_tick(&mut r);
+        self.towns_tick();
         self.claims_tick(&mut r);
         self.room_tick(&mut r);
         self.slips_tick(&mut r);
@@ -1336,6 +1337,7 @@ impl World {
         }
         self.hall.sort_by(|a, b| b.capital.cmp(&a.capital));
         self.hall.truncate(20);
+        self.close_towns_for_festival();
         self.intermission = Some(rules::WATCHES_BETWEEN_SEASONS);
     }
 
@@ -1343,8 +1345,12 @@ impl World {
     /// have got to, then begins again.
     pub fn start_next_season(&mut self) {
         let guild = self.guild;
+        // A town keeps its coins from one season to the next.
+        let town_accounts: Vec<_> = self.towns.iter().map(|t| t.acct).collect();
+        let town_names: Vec<String> = town_accounts.iter().map(|a| self.ledger.account_name(*a).to_string()).collect();
+        let season_end = self.watch;
         for (acct, held) in self.ledger.holders(self.crown) {
-            if acct != guild {
+            if acct != guild && !town_accounts.contains(&acct) {
                 self.ledger
                     .transfer(self.crown, acct, guild, held)
                     .expect("transferring the exact balance");
@@ -1381,6 +1387,7 @@ impl World {
         self.season += 1;
         self.intermission = None;
         self.seed_season();
+        self.towns_next_season(&town_names, season_end);
     }
 }
 

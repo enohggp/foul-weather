@@ -155,3 +155,8 @@ export function titleFor(capital: number) {
   if (capital < 16000) return "Harbor Hero";
   return "Harbor Champion";
 }
+
+/** Very long account names, such as 64-character implicit ones, shortened to fit a button. */
+export function shortAccount(id: string) {
+  return id.length > 40 ? `${id.slice(0, 10)}…${id.slice(-8)}` : id;
+}

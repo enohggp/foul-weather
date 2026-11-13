@@ -1,4 +1,4 @@
-// Checks the live contract without a wallet or a key. Reads only.
+// Checks the live contract with no key. Reads only.
 //
 //   npm run verify
 

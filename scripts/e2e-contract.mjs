@@ -40,7 +40,7 @@ const opened = await gate
   .functionCall(CONTRACT, "open_account", { public_key: key.publicKey.toString(), identity: null }, { gas: "60 Tgas" })
   .send({ waitUntil: "EXECUTED_OPTIMISTIC" });
 const player = JSON.parse(atob(opened.status.SuccessValue));
-check("a new account opens with no wallet", player.endsWith(CONTRACT), player);
+check("a guest account opens through the front door", player.endsWith(CONTRACT), player);
 await sleep(2500);
 
 // The front door must not be able to do anything else.
@@ -57,7 +57,8 @@ check("a tick with too little gas fails before the watch runs", shortTick);
 
 const near = new Near({ network, privateKey: key.secretKey, defaultSignerId: player });
 const send = (method, args) =>
-  near.transaction(player).functionCall(CONTRACT, method, args, { gas: "40 Tgas" }).send({ waitUntil: "EXECUTED_OPTIMISTIC" });
+  near.transaction(player).functionCall(CONTRACT, method, args, { gas: "15 Tgas" }).send({ waitUntil: "EXECUTED_OPTIMISTIC" });
+const ticker = new Near({ network, privateKey: await reader().view(CONTRACT, "tick_key", {}, LATEST), defaultSignerId: CONTRACT });
 
 await send("found_house", { name: `E2E ${Date.now() % 10000}`, agent: true });
 await sleep(3000);
@@ -74,7 +75,8 @@ for (let i = 0; i < 40 && !signed; i++) {
     const outcome = await send("quote", { slip: slip.id, rate_bps: slip.offer_bps, line_bps: 2500 }).catch(() => null);
     signed = Boolean(outcome);
   } else {
-    await near.transaction(player).functionCall(CONTRACT, "tick", {}, { gas: "80 Tgas" }).send({ waitUntil: "EXECUTED_OPTIMISTIC" }).catch(() => null);
+    // The same public key every browser uses, so a player's small balance isn't spent on it.
+    await ticker.transaction(CONTRACT).functionCall(CONTRACT, "tick", {}, { gas: "80 Tgas" }).send({ waitUntil: "EXECUTED_OPTIMISTIC" }).catch(() => null);
     await sleep(3000);
   }
 }

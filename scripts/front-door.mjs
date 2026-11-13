@@ -1,5 +1,5 @@
 // Publishes two public keys. They let a new player open an account, and any browser
-// move the world on, with no wallet and no server.
+// move the world on, with nothing to set up and no server.
 //
 // NEAR itself limits each key: the front door can only call `open_account`, and the
 // tick key can only call `tick`, each within the gas allowance below. The contract

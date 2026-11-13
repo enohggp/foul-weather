@@ -13,4 +13,3 @@ credentials/
 Thumbs.db
 *.log
 .agent-key.json
-# Narration clips stay out of the repository until a voice with a clear licence is chosen.
