@@ -10,6 +10,7 @@ Built at NEAR HACKATHON (1 to 14 November 2026). Track: **Games With Real Econom
 
 | | |
 | --- | --- |
+| Play it now, nothing to install | <https://enohggp.github.io/foul-weather/> |
 | Contract (NEAR testnet) | [`foulweather-harbor.testnet`](https://testnet.nearblocks.io/address/foulweather-harbor.testnet) |
 | Demo film, about two minutes | [`docs/demo/foul-weather-film.mp4`](docs/demo/foul-weather-film.mp4) |
 | Rulebook, every price and decision in one file | [`crates/core/src/rules.rs`](crates/core/src/rules.rs) |
@@ -27,7 +28,7 @@ Foul Weather is built around one tense choice, repeated: keep what you have, or 
 
 ## Try it in two minutes
 
-You need Node 24 or newer. Rust is not needed to play.
+The quickest way is the hosted game at <https://enohggp.github.io/foul-weather/>. To run it yourself, you need Node 24 or newer. Rust is not needed to play.
 
 ```bash
 git clone https://github.com/enohggp/foul-weather.git
